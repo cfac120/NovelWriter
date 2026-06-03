@@ -1,10 +1,10 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.Core.Entities;
-using NovelWriter.Core.Enums;
 using NovelWriter.Core.ValueObjects;
 using NovelWriter.Engine.Pipeline;
 using NovelWriter.Storage;
@@ -14,17 +14,23 @@ namespace NovelWriter.App.Views;
 public partial class ProjectSetupDialog : Window
 {
     private readonly ProjectId _projectId;
+    private readonly string _genre;
+    private readonly string _storyIdea;
     private SynopsisResult? _synopsisResult;
-    private List<Outline>? _outlines;
     private int _step = 1;
     private readonly CancellationTokenSource _cts = new();
-
     public bool SetupCompleted { get; private set; }
 
-    public ProjectSetupDialog(ProjectId projectId)
+    public ProjectSetupDialog(ProjectId projectId, string genre, string storyIdea,
+        bool styleEnabled = false, bool interludeEnabled = false)
     {
         _projectId = projectId;
+        _genre = genre;
+        _storyIdea = storyIdea;
         InitializeComponent();
+
+        // 填好题材信息
+        GenreCombo.SelectedIndex = GetGenreIndex(genre);
     }
 
     private async void Next_Click(object sender, RoutedEventArgs e)
@@ -51,12 +57,15 @@ public partial class ProjectSetupDialog : Window
         SetStepHighlight(2);
 
         SynopsisStatus.Text = "正在调用 AI 生成梗概...";
+        SynopsisStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87));
 
         try
         {
             await using var scope = NovelWriterApp.Services.CreateAsyncScope();
             var gen = scope.ServiceProvider.GetRequiredService<SynopsisGenerator>();
-            _synopsisResult = await gen.GenerateAsync(genre, tags, words, _cts.Token);
+
+            var genreInput = $"{genre}。{_storyIdea}";
+            _synopsisResult = await gen.GenerateAsync(genreInput, tags, words, _cts.Token);
 
             if (_synopsisResult.Success)
             {
@@ -74,6 +83,7 @@ public partial class ProjectSetupDialog : Window
             else
             {
                 SynopsisStatus.Text = $"生成失败: {_synopsisResult.Error}";
+                SynopsisStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8));
             }
         }
         catch (Exception ex)
@@ -92,17 +102,17 @@ public partial class ProjectSetupDialog : Window
         SetStepHighlight(3);
 
         OutlineStatus.Text = "正在调用 AI 生成大纲...";
+        OutlineStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xFA, 0xB3, 0x87));
 
         try
         {
             await using var scope = NovelWriterApp.Services.CreateAsyncScope();
             var gen = scope.ServiceProvider.GetRequiredService<OutlineGenerator>();
+            var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
 
-            // 用户可能编辑了梗概，使用编辑后的内容
-            var synopsisText = SynopsisBox.Text;
             var result = await gen.GenerateAsync(
                 _projectId,
-                synopsisText,
+                SynopsisBox.Text,
                 _synopsisResult?.CoreConflict ?? "",
                 _synopsisResult?.MainCharacterName ?? "主角",
                 TagsBox.Text,
@@ -111,26 +121,24 @@ public partial class ProjectSetupDialog : Window
 
             if (result.Success)
             {
-                _outlines = result.Outlines;
-
-                var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
-                foreach (var o in _outlines)
+                foreach (var o in result.Outlines)
                     db.Outlines.Add(o);
                 await db.SaveChangesAsync(_cts.Token);
 
-                OutlineList.ItemsSource = _outlines.Select(o => new OutlineItem
+                OutlineList.ItemsSource = result.Outlines.Select(o => new OutlineDisplay
                 {
                     ChapterText = $"第{o.ChapterNumber}章",
-                    Title = o.SceneDescription ?? $"(第{o.ChapterNumber}章)",
-                    Scene = o.SceneDescription ?? ""
+                    Title = o.SceneDescription ?? $"({o.ChapterNumber})",
+                    Scene = o.KeyEvents ?? ""
                 }).ToList();
 
-                OutlineStatus.Text = $"大纲已生成: {_outlines.Count}章，{_outlines.Max(o => o.VolumeNumber)}卷";
+                OutlineStatus.Text = $"已生成 {result.Outlines.Count}章，{result.Outlines.Max(o => o.VolumeNumber)}卷";
                 OutlineStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xA6, 0xE3, 0xA1));
             }
             else
             {
                 OutlineStatus.Text = $"生成失败: {result.Error}";
+                OutlineStatus.Foreground = new SolidColorBrush(Color.FromRgb(0xF3, 0x8B, 0xA8));
             }
         }
         catch (Exception ex)
@@ -149,7 +157,7 @@ public partial class ProjectSetupDialog : Window
         if (project != null)
         {
             project.Genre = ((ComboBoxItem)GenreCombo.SelectedItem).Content.ToString();
-            project.Status = ProjectStatus.Active;
+            project.Status = NovelWriter.Core.Enums.ProjectStatus.Active;
             await db.SaveChangesAsync(_cts.Token);
         }
 
@@ -160,22 +168,10 @@ public partial class ProjectSetupDialog : Window
 
     private void Prev_Click(object sender, RoutedEventArgs e)
     {
-        switch (_step)
-        {
-            case 2:
-                Panel2.Visibility = Visibility.Collapsed;
-                Panel1.Visibility = Visibility.Visible;
-                SetStepHighlight(1);
-                NextBtn.Content = "生成梗概";
-                PrevBtn.Visibility = Visibility.Collapsed;
-                break;
-            case 3:
-                Panel3.Visibility = Visibility.Collapsed;
-                Panel2.Visibility = Visibility.Visible;
-                SetStepHighlight(2);
-                NextBtn.Content = "确认梗概，生成大纲";
-                break;
-        }
+        if (_step == 2) { Panel2.Visibility = Visibility.Collapsed; Panel1.Visibility = Visibility.Visible;
+            SetStepHighlight(1); NextBtn.Content = "生成梗概"; PrevBtn.Visibility = Visibility.Collapsed; }
+        else if (_step == 3) { Panel3.Visibility = Visibility.Collapsed; Panel2.Visibility = Visibility.Visible;
+            SetStepHighlight(2); NextBtn.Content = "确认梗概，生成大纲"; }
     }
 
     private void SetStepHighlight(int step)
@@ -189,6 +185,11 @@ public partial class ProjectSetupDialog : Window
         Step4Text.Foreground = step >= 4 ? blue : gray;
     }
 
+    private static int GetGenreIndex(string genre) => genre switch
+    {
+        "玄幻" => 0, "仙侠" => 1, "都市" => 2, "科幻" => 3, "历史" => 4, "奇幻" => 5, "悬疑" => 6, "灵异" => 7, _ => 0
+    };
+
     protected override void OnClosed(EventArgs e)
     {
         _cts.Cancel(); _cts.Dispose();
@@ -196,7 +197,7 @@ public partial class ProjectSetupDialog : Window
     }
 }
 
-public class OutlineItem
+public class OutlineDisplay
 {
     public string ChapterText { get; init; } = "";
     public string Title { get; init; } = "";

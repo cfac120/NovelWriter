@@ -21,6 +21,9 @@ public partial class ShellViewModel : ObservableObject
     private string _pipelineStageText = string.Empty;
 
     [ObservableProperty]
+    private string _llmStatusText = "DeepSeek V4";
+
+    [ObservableProperty]
     private int _projectCount;
 
     [ObservableProperty]

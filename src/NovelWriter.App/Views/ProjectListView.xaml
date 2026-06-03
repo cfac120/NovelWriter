@@ -5,24 +5,19 @@
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="我的项目" FontSize="14" FontWeight="SemiBold"
-                   Foreground="#A6ADC8" Margin="0,0,0,12"/>
-
-        <StackPanel Grid.Row="1" Margin="0,0,0,12">
-            <TextBox x:Name="TitleBox" Text="{Binding NewProjectTitle, UpdateSourceTrigger=PropertyChanged}"
-                     Margin="0,0,0,6" Foreground="#CDD6F4" Background="#2A2A3C"
-                     BorderBrush="#45475A" Padding="6"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="我的项目" FontSize="14" FontWeight="SemiBold"
+                       Foreground="#A6ADC8" Margin="0,0,0,8"/>
             <Button Content="+ 创建项目"
                     Command="{Binding CreateProjectCommand}"
                     Foreground="#89B4FA" Background="#313244"
-                    HorizontalAlignment="Left" Padding="12,4"/>
+                    HorizontalAlignment="Left" Padding="16,6"/>
         </StackPanel>
 
-        <ItemsControl Grid.Row="2" ItemsSource="{Binding Projects}">
+        <ItemsControl Grid.Row="1" ItemsSource="{Binding Projects}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
                     <Border Margin="0,0,0,4" Padding="8" Background="#2A2A3C"
@@ -32,7 +27,6 @@
                             <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontSize="13"/>
                             <TextBlock Foreground="#6C7086" FontSize="11">
                                 <Run Text="{Binding Genre}"/><Run Text=" · "/>
-                                <Run Text="{Binding Status}"/><Run Text=" · "/>
                                 <Run Text="{Binding ChapterCount}"/><Run Text="章"/>
                             </TextBlock>
                         </StackPanel>

@@ -14,9 +14,6 @@ public partial class ProjectListViewModel : ViewModelBase
     private ObservableCollection<ProjectItem> _projects = [];
 
     [ObservableProperty]
-    private string _newProjectTitle = string.Empty;
-
-    [ObservableProperty]
     private bool _isLoading;
 
     [RelayCommand]
@@ -46,44 +43,36 @@ public partial class ProjectListViewModel : ViewModelBase
         if (Application.Current.Windows.OfType<Views.ShellWindow>()
             .FirstOrDefault()?.DataContext is ShellViewModel svm)
         {
-            var editor = new EditorViewModel
-            {
-                ChapterTitle = "加载中..."
-            };
             svm.NavigateToCommand.Execute("editor");
-            svm.StatusText = $"已打开项目: {projectId}";
+            svm.StatusText = $"已打开项目";
         }
     }
 
     [RelayCommand]
     private async Task CreateProject()
     {
-        if (string.IsNullOrWhiteSpace(NewProjectTitle)) return;
+        var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        var newProjDlg = new Views.NewProjectDialog { Owner = owner };
+        if (newProjDlg.ShowDialog() != true || newProjDlg.CreatedProject == null)
+            return;
+
+        var project = newProjDlg.CreatedProject;
+
         await using var scope = NovelWriterApp.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
-        var project = new Core.Entities.Project
-        {
-            Title = NewProjectTitle,
-            Genre = "未分类",
-            Status = Core.Enums.ProjectStatus.Active
-        };
         db.Projects.Add(project);
         await db.SaveChangesAsync();
-
-        var pid = project.Id;
-        NewProjectTitle = string.Empty;
         await LoadProjects();
 
-        // 弹出项目设置向导
-        var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
-        var setup = new Views.ProjectSetupDialog(pid) { Owner = owner };
-        setup.ShowDialog();
+        // 打开项目设置向导(梗概+大纲)
+        var setupDlg = new Views.ProjectSetupDialog(
+            project.Id, project.Genre ?? "玄幻",
+            newProjDlg.StoryIdea, newProjDlg.StyleEnabled, newProjDlg.InterludeEnabled)
+        { Owner = owner };
+        setupDlg.ShowDialog();
 
-        if (setup.SetupCompleted)
-        {
-            // 打开编辑器
-            OpenProjectCommand.Execute(pid.Value.ToString());
-        }
+        if (setupDlg.SetupCompleted)
+            OpenProjectCommand.Execute(project.Id.Value.ToString());
     }
 
     public record ProjectItem

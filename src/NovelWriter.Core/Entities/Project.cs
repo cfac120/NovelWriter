@@ -12,6 +12,7 @@ public class Project
     public int TargetWordCount { get; set; }
     public int TargetChapterCount { get; set; }
     public int ChaptersPerVolume { get; set; } = 30;
+    public string? StoryIdea { get; set; }
     public string? CustomInstructions { get; set; }
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
