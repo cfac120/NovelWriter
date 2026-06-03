@@ -32,7 +32,7 @@ public partial class ProjectListViewModel : ViewModelBase
                 {
                     Id = p.Id.ToString(),
                     Title = p.Title,
-                    Genre = p.Genre,
+                    Genre = p.Genre ?? "",
                     Status = p.Status.ToString(),
                     ChapterCount = db.Chapters.Count(c => c.ProjectId == p.Id)
                 }));
@@ -57,7 +57,7 @@ public partial class ProjectListViewModel : ViewModelBase
         await db.SaveChangesAsync();
 
         NewProjectTitle = string.Empty;
-        LoadProjects();
+        await LoadProjects();
     }
 
     public record ProjectItem

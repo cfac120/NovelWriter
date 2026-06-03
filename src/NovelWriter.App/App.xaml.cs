@@ -3,7 +3,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.Core.Interfaces;
 using NovelWriter.Engine.ContextWindow;
-using NovelWriter.Engine.Llm;
 using NovelWriter.Engine.Memory;
 using NovelWriter.Engine.Review;
 using NovelWriter.Storage;
@@ -17,42 +16,46 @@ public partial class NovelWriterApp : Application
 {
     public static ServiceProvider Services { get; private set; } = null!;
 
-    private void OnStartup(object sender, StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
-        var services = new ServiceCollection();
+        base.OnStartup(e);
 
-        // Storage
-        services.AddDbContext<NovelWriterDbContext>(options =>
-            options.UseSqlite("Data Source=novelwriter.db"));
-        services.AddScoped<INovelWriterDbContext>(sp => sp.GetRequiredService<NovelWriterDbContext>());
-        services.AddScoped<IProjectRepository, ProjectRepository>();
-        services.AddScoped<IChapterRepository, ChapterRepository>();
-        services.AddScoped<IOutlineRepository, OutlineRepository>();
-        services.AddScoped<IMemoryRepository, MemoryRepository>();
+        try
+        {
+            var services = new ServiceCollection();
 
-        // Engine
-        services.AddSingleton<TokenCounter>();
-        services.AddScoped<ContextWindowCompiler>();
-        services.AddScoped<L2Updater>();
-        services.AddScoped<MemoryChangeValidator>();
-        services.AddScoped<ReviewAggregator>();
+            services.AddDbContext<NovelWriterDbContext>(options =>
+                options.UseSqlite("Data Source=novelwriter.db"));
+            services.AddScoped<INovelWriterDbContext>(sp => sp.GetRequiredService<NovelWriterDbContext>());
+            services.AddScoped<IProjectRepository, ProjectRepository>();
+            services.AddScoped<IChapterRepository, ChapterRepository>();
+            services.AddScoped<IOutlineRepository, OutlineRepository>();
+            services.AddScoped<IMemoryRepository, MemoryRepository>();
 
-        // ViewModels
-        services.AddSingleton<ShellViewModel>();
-        services.AddTransient<EditorViewModel>();
-        services.AddTransient<ProjectListViewModel>();
+            services.AddSingleton<TokenCounter>();
+            services.AddScoped<ContextWindowCompiler>();
+            services.AddScoped<L2Updater>();
+            services.AddScoped<MemoryChangeValidator>();
+            services.AddScoped<ReviewAggregator>();
 
-        // Views
-        services.AddSingleton<ShellWindow>();
+            services.AddSingleton<ShellViewModel>();
+            services.AddSingleton<ShellWindow>();
 
-        Services = services.BuildServiceProvider();
+            Services = services.BuildServiceProvider();
 
-        // 确保数据库创建
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
-        db.Database.EnsureCreated();
+            using var scope = Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
+            db.Database.EnsureCreated();
 
-        var shell = Services.GetRequiredService<ShellWindow>();
-        shell.Show();
+            var shell = Services.GetRequiredService<ShellWindow>();
+            MainWindow = shell;
+            shell.Show();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"启动失败: {ex}", "NovelWriter",
+                MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown();
+        }
     }
 }

@@ -3,12 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:NovelWriter.App.ViewModels"
         xmlns:views="clr-namespace:NovelWriter.App.Views"
-        xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
         Title="NovelWriter"
         Height="720" Width="1280"
         MinHeight="480" MinWidth="900"
         WindowStartupLocation="CenterScreen"
-        Background="{StaticResource EditorBackground}">
+        Background="#1E1E2E">
 
     <Window.DataContext>
         <vm:ShellViewModel/>
@@ -20,31 +19,23 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 三栏主区域 -->
         <Grid Grid.Row="0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220" MinWidth="160"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="280" MinWidth="200"/>
             </Grid.ColumnDefinitions>
 
-            <!-- 左栏: 项目导航 -->
-            <Border Grid.Column="0" Background="{StaticResource SidebarBackground}" BorderThickness="0,0,1,0" BorderBrush="#313244">
+            <!-- 左栏 -->
+            <Border Grid.Column="0" Background="#1A1A2E">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="12">
                         <TextBlock Text="NovelWriter" FontSize="18" FontWeight="Bold"
-                                   Foreground="{StaticResource AccentColor}" Margin="0,8,0,16"/>
-
-                        <!-- 项目列表 -->
+                                   Foreground="#89B4FA" Margin="0,8,0,16"/>
                         <ContentControl Content="{Binding ActiveView}">
                             <ContentControl.Resources>
                                 <DataTemplate DataType="{x:Type vm:ProjectListViewModel}">
                                     <views:ProjectListView/>
-                                </DataTemplate>
-                                <DataTemplate DataType="{x:Type vm:EditorViewModel}">
-                                    <TextBlock Text="写作中..." Foreground="Gray"/>
                                 </DataTemplate>
                             </ContentControl.Resources>
                         </ContentControl>
@@ -52,51 +43,35 @@
                 </ScrollViewer>
             </Border>
 
-            <GridSplitter Grid.Column="1" Width="4" Background="#313244"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-
-            <!-- 中栏: 编辑器 -->
-            <Border Grid.Column="2" Background="{StaticResource EditorBackground}">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                    </Grid.RowDefinitions>
-
-                    <TextBlock Grid.Row="0" Text="编辑器" FontSize="14"
-                               Foreground="Gray" Margin="16,12"/>
-                    <TextBlock Grid.Row="1" Text="选择或创建项目开始写作"
-                               Foreground="Gray" FontSize="18"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                </Grid>
+            <!-- 中栏 -->
+            <Border Grid.Column="1" Background="#1E1E2E">
+                <TextBlock Text="选择或创建项目开始写作"
+                           Foreground="#6C7086" FontSize="18"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
             </Border>
 
-            <GridSplitter Grid.Column="3" Width="4" Background="#313244"
-                          HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
-
-            <!-- 右栏: 信息面板 -->
-            <Border Grid.Column="4" Background="{StaticResource PanelBackground}" BorderThickness="1,0,0,0" BorderBrush="#313244">
+            <!-- 右栏 -->
+            <Border Grid.Column="2" Background="#181825">
                 <StackPanel Margin="12">
-                    <TextBlock Text="信息" FontSize="14" FontWeight="SemiBold"
-                               Foreground="#A6ADC8" Margin="0,0,0,12"/>
-                    <TextBlock Text="暂无内容" Foreground="Gray"/>
+                    <TextBlock Text="信息面板" FontSize="14" Foreground="#A6ADC8"/>
+                    <TextBlock Text="暂无内容" Foreground="Gray" Margin="0,8,0,0"/>
                 </StackPanel>
             </Border>
         </Grid>
 
         <!-- 底部状态栏 -->
-        <Border Grid.Row="1" Background="{StaticResource StatusBarBackground}" Height="28">
+        <Border Grid.Row="1" Background="#11111B" Height="28">
             <Grid Margin="8,0">
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                <StackPanel HorizontalAlignment="Left">
                     <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#A6ADC8"/>
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBlock Text="项目: " FontSize="12" Foreground="#6C7086"/>
-                    <TextBlock Text="{Binding ProjectCount}" FontSize="12" Foreground="#89B4FA"/>
-                    <TextBlock Text="  章节: " FontSize="12" Foreground="#6C7086"/>
-                    <TextBlock Text="{Binding ChapterCount}" FontSize="12" Foreground="#89B4FA"/>
-                    <TextBlock Text="  字数: " FontSize="12" Foreground="#6C7086"/>
-                    <TextBlock Text="{Binding TotalWordCount}" FontSize="12" Foreground="#89B4FA"/>
+                <StackPanel HorizontalAlignment="Right">
+                    <TextBlock FontSize="12">
+                        <Run Text="项目:" Foreground="#6C7086"/>
+                        <Run Text="{Binding ProjectCount}" Foreground="#89B4FA"/>
+                        <Run Text=" 字数:" Foreground="#6C7086"/>
+                        <Run Text="{Binding TotalWordCount}" Foreground="#89B4FA"/>
+                    </TextBlock>
                 </StackPanel>
             </Grid>
         </Border>

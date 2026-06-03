@@ -21,3 +21,6 @@ tests/NovelWriter.PoC/exports/
 # CodeBuddy
 .claude/
 .codebuddy/
+*.db
+*.db-shm
+*.db-wal

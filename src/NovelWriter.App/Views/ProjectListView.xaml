@@ -1,12 +1,7 @@
 <UserControl x:Class="NovelWriter.App.Views.ProjectListView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
-             xmlns:vm="clr-namespace:NovelWriter.App.ViewModels"
-             mc:Ignorable="d"
-             d:DataContext="{d:DesignInstance vm:ProjectListViewModel}">
+             xmlns:vm="clr-namespace:NovelWriter.App.ViewModels">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -18,21 +13,16 @@
         <TextBlock Grid.Row="0" Text="我的项目" FontSize="14" FontWeight="SemiBold"
                    Foreground="#A6ADC8" Margin="0,0,0,12"/>
 
-        <!-- 新建项目 -->
-        <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0,0,0,12">
+        <StackPanel Grid.Row="1" Margin="0,0,0,12">
             <TextBox Text="{Binding NewProjectTitle, UpdateSourceTrigger=PropertyChanged}"
-                     materialDesign:HintAssist.Hint="项目名称"
-                     Style="{StaticResource MaterialDesignOutlinedTextBox}"
-                     Margin="0,0,0,6"
-                     Foreground="#CDD6F4"/>
+                     Margin="0,0,0,6" Foreground="#CDD6F4" Background="#2A2A3C"
+                     BorderBrush="#45475A" Padding="6"/>
             <Button Content="+ 创建项目"
                     Command="{Binding CreateProjectCommand}"
-                    Style="{StaticResource MaterialDesignFlatButton}"
-                    Foreground="{StaticResource AccentColor}"
-                    HorizontalAlignment="Left"/>
+                    Foreground="#89B4FA" Background="#313244"
+                    HorizontalAlignment="Left" Padding="12,4"/>
         </StackPanel>
 
-        <!-- 项目列表 -->
         <ItemsControl Grid.Row="2" ItemsSource="{Binding Projects}">
             <ItemsControl.ItemTemplate>
                 <DataTemplate>
@@ -41,8 +31,9 @@
                         <StackPanel>
                             <TextBlock Text="{Binding Title}" Foreground="#CDD6F4" FontSize="13"/>
                             <TextBlock Foreground="#6C7086" FontSize="11">
-                                <Run Text="{Binding Genre}"/><Run Text=" · "/><Run Text="{Binding Status}"/>
-                                <Run Text=" · "/><Run Text="{Binding ChapterCount}"/><Run Text="章"/>
+                                <Run Text="{Binding Genre}"/><Run Text=" · "/>
+                                <Run Text="{Binding Status}"/><Run Text=" · "/>
+                                <Run Text="{Binding ChapterCount}"/><Run Text="章"/>
                             </TextBlock>
                         </StackPanel>
                     </Border>
