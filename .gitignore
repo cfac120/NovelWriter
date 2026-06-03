@@ -1,0 +1,19 @@
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Build artifacts
+bin/
+obj/
+out/
+
+# CodeBuddy
+.claude/
+.codebuddy/
