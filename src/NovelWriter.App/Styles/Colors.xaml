@@ -1,0 +1,9 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="EditorBackground" Color="#1E1E2E"/>
+    <SolidColorBrush x:Key="EditorForeground" Color="#CDD6F4"/>
+    <SolidColorBrush x:Key="PanelBackground" Color="#181825"/>
+    <SolidColorBrush x:Key="AccentColor" Color="#89B4FA"/>
+    <SolidColorBrush x:Key="StatusBarBackground" Color="#11111B"/>
+    <SolidColorBrush x:Key="SidebarBackground" Color="#1A1A2E"/>
+</ResourceDictionary>
