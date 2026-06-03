@@ -40,6 +40,9 @@ public class MemoryRepository : IMemoryRepository
     public async Task<IReadOnlyList<Foreshadowing>> GetActiveForeshadowingsAsync(ProjectId projectId, int volume) =>
         await _db.Foreshadowings.Where(f => f.ProjectId == projectId && f.VolumeNumber == volume && f.Status == ForeshadowingStatus.Active).ToListAsync();
 
+    public async Task<IReadOnlyList<Foreshadowing>> GetAllForeshadowingsForVolumeAsync(ProjectId projectId, int volume) =>
+        await _db.Foreshadowings.Where(f => f.ProjectId == projectId && f.VolumeNumber == volume).ToListAsync();
+
     public async Task AddForeshadowingAsync(Foreshadowing fs)
     {
         await _db.Foreshadowings.AddAsync(fs);
@@ -63,6 +66,12 @@ public class MemoryRepository : IMemoryRepository
 
     public async Task<IReadOnlyList<SubplotTracker>> GetSubplotTrackersAsync(ProjectId projectId, int volume) =>
         await _db.SubplotTrackers.Where(s => s.ProjectId == projectId && s.VolumeNumber == volume).ToListAsync();
+
+    public async Task UpdateSubplotTrackerAsync(SubplotTracker subplot)
+    {
+        _db.SubplotTrackers.Update(subplot);
+        await _db.SaveChangesAsync();
+    }
 
     public async Task<IReadOnlyList<ChapterSummary>> GetRecentSummariesAsync(ProjectId projectId, int count, int beforeChapter = int.MaxValue) =>
         await _db.ChapterSummaries

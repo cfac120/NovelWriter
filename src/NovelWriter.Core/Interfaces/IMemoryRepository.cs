@@ -16,11 +16,13 @@ public interface IMemoryRepository
 
     // L2
     Task<IReadOnlyList<Foreshadowing>> GetActiveForeshadowingsAsync(ProjectId projectId, int volume);
+    Task<IReadOnlyList<Foreshadowing>> GetAllForeshadowingsForVolumeAsync(ProjectId projectId, int volume);
     Task AddForeshadowingAsync(Foreshadowing fs);
     Task UpdateForeshadowingAsync(Foreshadowing fs);
     Task<IReadOnlyList<ArcTracker>> GetArcTrackersAsync(ProjectId projectId);
     Task UpdateArcTrackerAsync(ArcTracker arc);
     Task<IReadOnlyList<SubplotTracker>> GetSubplotTrackersAsync(ProjectId projectId, int volume);
+    Task UpdateSubplotTrackerAsync(SubplotTracker subplot);
 
     // L1
     Task<IReadOnlyList<ChapterSummary>> GetRecentSummariesAsync(ProjectId projectId, int count, int beforeChapter = int.MaxValue);
