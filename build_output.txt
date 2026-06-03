@@ -1,0 +1,11 @@
+  正在确定要还原的项目…
+  已还原 C:\Users\cfac1\novleWriter\src\NovelWriter.Storage\NovelWriter.Storage.csproj (用时 221 毫秒)。
+  1 个项目(共 2 个)是最新的，无法还原。
+  NovelWriter.Core -> C:\Users\cfac1\novleWriter\src\NovelWriter.Core\bin\Debug\net10.0\NovelWriter.Core.dll
+  NovelWriter.Storage -> C:\Users\cfac1\novleWriter\src\NovelWriter.Storage\bin\Debug\net10.0\NovelWriter.Storage.dll
+
+已成功生成。
+    0 个警告
+    0 个错误
+
+已用时间 00:00:01.49

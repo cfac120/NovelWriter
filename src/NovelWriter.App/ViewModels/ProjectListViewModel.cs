@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.EntityFrameworkCore;
@@ -30,10 +31,9 @@ public partial class ProjectListViewModel : ViewModelBase
             Projects = new ObservableCollection<ProjectItem>(
                 list.Select(p => new ProjectItem
                 {
-                    Id = p.Id.ToString(),
+                    Id = p.Id.Value.ToString(),
                     Title = p.Title,
                     Genre = p.Genre ?? "",
-                    Status = p.Status.ToString(),
                     ChapterCount = db.Chapters.Count(c => c.ProjectId == p.Id)
                 }));
         }
@@ -41,10 +41,24 @@ public partial class ProjectListViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void OpenProject(string projectId)
+    {
+        if (Application.Current.Windows.OfType<Views.ShellWindow>()
+            .FirstOrDefault()?.DataContext is ShellViewModel svm)
+        {
+            var editor = new EditorViewModel
+            {
+                ChapterTitle = "加载中..."
+            };
+            svm.NavigateToCommand.Execute("editor");
+            svm.StatusText = $"已打开项目: {projectId}";
+        }
+    }
+
+    [RelayCommand]
     private async Task CreateProject()
     {
         if (string.IsNullOrWhiteSpace(NewProjectTitle)) return;
-
         await using var scope = NovelWriterApp.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<NovelWriterDbContext>();
         var project = new Core.Entities.Project
@@ -55,7 +69,6 @@ public partial class ProjectListViewModel : ViewModelBase
         };
         db.Projects.Add(project);
         await db.SaveChangesAsync();
-
         NewProjectTitle = string.Empty;
         await LoadProjects();
     }
@@ -65,7 +78,6 @@ public partial class ProjectListViewModel : ViewModelBase
         public string Id { get; init; } = "";
         public string Title { get; init; } = "";
         public string Genre { get; init; } = "";
-        public string Status { get; init; } = "";
         public int ChapterCount { get; init; }
     }
 }

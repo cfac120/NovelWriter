@@ -154,9 +154,3 @@ public class ReviewOrchestrator
 
     private record FlaggedDto(string type, string detail);
 }
-
-internal static class StringTruncate
-{
-    public static string Truncate(this string value, int maxLength) =>
-        string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "...";
-}

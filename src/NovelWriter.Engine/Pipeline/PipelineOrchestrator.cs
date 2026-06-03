@@ -8,6 +8,7 @@ using NovelWriter.Core.ValueObjects;
 using NovelWriter.Engine.ContextWindow;
 using NovelWriter.Engine.Memory;
 using NovelWriter.Engine.Review;
+using NovelWriter.Engine.Style;
 using Serilog;
 
 namespace NovelWriter.Engine.Pipeline;
@@ -30,6 +31,10 @@ public class PipelineOrchestrator
     private readonly ILlmAdapter _writingLlm;
     private readonly ILlmAdapter _reviewLlm;
     private readonly ReviewOrchestrator _reviewOrchestrator;
+    private readonly StyleInjector? _styleInjector;
+    private readonly InterludeInjector? _interludeInjector;
+    private readonly bool _styleEnabled;
+    private readonly bool _interludeEnabled;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private PipelineContext _context = null!;
 
@@ -46,7 +51,11 @@ public class PipelineOrchestrator
         L2Updater l2Updater,
         MemoryChangeValidator validator,
         ILlmAdapter writingLlm,
-        ILlmAdapter reviewLlm)
+        ILlmAdapter reviewLlm,
+        StyleInjector? styleInjector = null,
+        InterludeInjector? interludeInjector = null,
+        bool styleEnabled = false,
+        bool interludeEnabled = false)
     {
         _serviceProvider = serviceProvider;
         _projectRepo = projectRepo;
@@ -60,6 +69,10 @@ public class PipelineOrchestrator
         _writingLlm = writingLlm;
         _reviewLlm = reviewLlm;
         _reviewOrchestrator = new ReviewOrchestrator(reviewLlm);
+        _styleInjector = styleInjector;
+        _interludeInjector = interludeInjector;
+        _styleEnabled = styleEnabled;
+        _interludeEnabled = interludeEnabled;
     }
 
     // === 启动流水线 ===
@@ -145,7 +158,7 @@ public class PipelineOrchestrator
         };
     }
 
-    // === Stage 04: 写前准备（ContextWindow 编译） ===
+    // === Stage 04: 写前准备（ContextWindow 编译 + 风格注入 + 插曲注入） ===
 
     private async Task<PipelineResult> ExecuteStage04Async(CancellationToken ct)
     {
@@ -154,8 +167,50 @@ public class PipelineOrchestrator
 
         Log.Information("[Stage04] Preparing ContextWindow for Volume{Vol} Chapter{Chap}", volumeNumber, chapterNumber);
 
+        // Step 1: 编译基础 ContextWindow
         var compiledContext = await _contextCompiler.CompileAsync(
             _context.ProjectId, volumeNumber, chapterNumber, _writingLlm.ModelName, ct);
+
+        // Step 2: 随机风格注入（如果启用）
+        if (_styleEnabled && _styleInjector != null)
+        {
+            var (profile, promptBlock) = await _styleInjector.SelectRandomStyleAsync(
+                _context.ProjectId, volumeNumber, chapterNumber);
+
+            if (profile != null && !string.IsNullOrEmpty(promptBlock))
+            {
+                compiledContext.SystemPrompt += "\n\n" + promptBlock;
+                _context.State.StyleProfile = profile;
+                Log.Information("[Stage04] Style injected: {StyleId} ({Title})",
+                    profile.Id, profile.SourceTitle);
+            }
+        }
+
+        // Step 3: 随机插曲注入（如果启用）
+        if (_interludeEnabled && _interludeInjector != null)
+        {
+            var outline = await _outlineRepo.GetByChapterNumberAsync(
+                _context.ProjectId, volumeNumber, chapterNumber);
+            var chapterContext = outline?.SceneDescription ?? $"第{chapterNumber}章";
+
+            var (entry, adaptedText) = await _interludeInjector.PrepareInterludeAsync(
+                _context.ProjectId, volumeNumber, chapterNumber, chapterContext, ct);
+
+            if (entry != null && !string.IsNullOrEmpty(adaptedText))
+            {
+                var interludeBlock = $"\n\n---\n*[插曲]* {adaptedText}";
+                compiledContext.UserMessage += interludeBlock;
+                Log.Information("[Stage04] Interlude injected: {InterludeId} ({Source})",
+                    entry.Id, entry.Source);
+            }
+        }
+
+        // Step 4: Token 预算校验
+        var totalTokens = compiledContext.TokenBudget.SystemPrompt + compiledContext.TokenBudget.UserMessage;
+        if (totalTokens > 160_000)
+        {
+            Log.Warning("[Stage04] Token budget exceeded: {TotalTokens}/160000", totalTokens);
+        }
 
         _context.State.CompiledContext = compiledContext;
 
@@ -335,10 +390,4 @@ public class PipelineOrchestrator
         _context.State.CurrentVolumeNumber = 1;
         return Task.FromResult(new PipelineResult { Success = true, NextStage = PipelineStage.Stage04_PreWritePrepare });
     }
-}
-
-internal static class TruncateExt
-{
-    public static string Truncate(this string value, int maxLength) =>
-        string.IsNullOrEmpty(value) || value.Length <= maxLength ? value : value[..maxLength] + "...";
 }

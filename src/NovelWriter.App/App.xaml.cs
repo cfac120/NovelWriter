@@ -2,9 +2,6 @@ using System.Windows;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.Core.Interfaces;
-using NovelWriter.Engine.ContextWindow;
-using NovelWriter.Engine.Memory;
-using NovelWriter.Engine.Review;
 using NovelWriter.Storage;
 using NovelWriter.Storage.Repositories;
 using NovelWriter.App.ViewModels;
@@ -23,20 +20,15 @@ public partial class NovelWriterApp : Application
         try
         {
             var services = new ServiceCollection();
-
-            services.AddDbContext<NovelWriterDbContext>(options =>
-                options.UseSqlite("Data Source=novelwriter.db"));
+            services.AddDbContext<NovelWriterDbContext>(o =>
+                o.UseSqlite("Data Source=novelwriter.db"));
             services.AddScoped<INovelWriterDbContext>(sp => sp.GetRequiredService<NovelWriterDbContext>());
             services.AddScoped<IProjectRepository, ProjectRepository>();
             services.AddScoped<IChapterRepository, ChapterRepository>();
             services.AddScoped<IOutlineRepository, OutlineRepository>();
             services.AddScoped<IMemoryRepository, MemoryRepository>();
-
-            services.AddSingleton<TokenCounter>();
-            services.AddScoped<ContextWindowCompiler>();
-            services.AddScoped<L2Updater>();
-            services.AddScoped<MemoryChangeValidator>();
-            services.AddScoped<ReviewAggregator>();
+            services.AddScoped<IStyleLibraryRepository, StyleLibraryRepository>();
+            services.AddScoped<IInterludeRepository, InterludeRepository>();
 
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<ShellWindow>();
@@ -48,7 +40,6 @@ public partial class NovelWriterApp : Application
             db.Database.EnsureCreated();
 
             var shell = Services.GetRequiredService<ShellWindow>();
-            MainWindow = shell;
             shell.Show();
         }
         catch (Exception ex)

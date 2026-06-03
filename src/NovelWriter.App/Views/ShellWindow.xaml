@@ -15,11 +15,21 @@
 
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="0">
+        <!-- 工具栏 -->
+        <Border Grid.Row="0" Background="#11111B" BorderBrush="#313244" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" Margin="8,4">
+                <Button Content="← 项目" Click="BackToProjects" Foreground="#A6ADC8"
+                        Background="#2A2A3C" BorderThickness="0" Padding="8,2"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 主区域：三栏 -->
+        <Grid Grid.Row="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="220" MinWidth="160"/>
                 <ColumnDefinition Width="*"/>
@@ -37,6 +47,9 @@
                                 <DataTemplate DataType="{x:Type vm:ProjectListViewModel}">
                                     <views:ProjectListView/>
                                 </DataTemplate>
+                                <DataTemplate DataType="{x:Type vm:EditorViewModel}">
+                                    <TextBlock Text="写作中" Foreground="#6C7086"/>
+                                </DataTemplate>
                             </ContentControl.Resources>
                         </ContentControl>
                     </StackPanel>
@@ -45,34 +58,49 @@
 
             <!-- 中栏 -->
             <Border Grid.Column="1" Background="#1E1E2E">
-                <TextBlock Text="选择或创建项目开始写作"
-                           Foreground="#6C7086" FontSize="18"
-                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <ContentControl Content="{Binding ActiveView}">
+                    <ContentControl.Resources>
+                        <DataTemplate DataType="{x:Type vm:EditorViewModel}">
+                            <views:EditorView/>
+                        </DataTemplate>
+                        <DataTemplate DataType="{x:Type vm:ProjectListViewModel}">
+                            <TextBlock Text="选择或创建项目开始写作"
+                                       Foreground="#6C7086" FontSize="18"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </DataTemplate>
+                    </ContentControl.Resources>
+                </ContentControl>
             </Border>
 
             <!-- 右栏 -->
             <Border Grid.Column="2" Background="#181825">
                 <StackPanel Margin="12">
-                    <TextBlock Text="信息面板" FontSize="14" Foreground="#A6ADC8"/>
-                    <TextBlock Text="暂无内容" Foreground="Gray" Margin="0,8,0,0"/>
+                    <TextBlock Text="章节列表" FontSize="14" Foreground="#A6ADC8" Margin="0,0,0,8"/>
+                    <ContentControl Content="{Binding ActiveView}">
+                        <ContentControl.Resources>
+                            <DataTemplate DataType="{x:Type vm:EditorViewModel}">
+                                <ListBox ItemsSource="{Binding Chapters}"
+                                         Background="Transparent" BorderThickness="0"
+                                         Foreground="#CDD6F4"/>
+                            </DataTemplate>
+                            <DataTemplate DataType="{x:Type vm:ProjectListViewModel}">
+                                <TextBlock Text="暂无项目" Foreground="Gray"/>
+                            </DataTemplate>
+                        </ContentControl.Resources>
+                    </ContentControl>
                 </StackPanel>
             </Border>
         </Grid>
 
         <!-- 底部状态栏 -->
-        <Border Grid.Row="1" Background="#11111B" Height="28">
+        <Border Grid.Row="2" Background="#11111B" Height="28">
             <Grid Margin="8,0">
-                <StackPanel HorizontalAlignment="Left">
-                    <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#A6ADC8"/>
-                </StackPanel>
-                <StackPanel HorizontalAlignment="Right">
-                    <TextBlock FontSize="12">
-                        <Run Text="项目:" Foreground="#6C7086"/>
-                        <Run Text="{Binding ProjectCount}" Foreground="#89B4FA"/>
-                        <Run Text=" 字数:" Foreground="#6C7086"/>
-                        <Run Text="{Binding TotalWordCount}" Foreground="#89B4FA"/>
-                    </TextBlock>
-                </StackPanel>
+                <TextBlock Text="{Binding StatusText}" FontSize="12" Foreground="#A6ADC8"
+                           HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                <TextBlock HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12"
+                           Foreground="#6C7086">
+                    <Run Text="字数:"/><Run Text="{Binding TotalWordCount}" Foreground="#89B4FA"/>
+                </TextBlock>
             </Grid>
         </Border>
     </Grid>

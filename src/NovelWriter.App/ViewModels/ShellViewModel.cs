@@ -1,7 +1,5 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using NovelWriter.Core.Entities;
 
 namespace NovelWriter.App.ViewModels;
 
@@ -11,7 +9,16 @@ public partial class ShellViewModel : ObservableObject
     private ViewModelBase _activeView;
 
     [ObservableProperty]
+    private ViewModelBase? _centerView;
+
+    [ObservableProperty]
+    private ViewModelBase? _rightPanelView;
+
+    [ObservableProperty]
     private string _statusText = "就绪";
+
+    [ObservableProperty]
+    private string _pipelineStageText = string.Empty;
 
     [ObservableProperty]
     private int _projectCount;
@@ -30,10 +37,34 @@ public partial class ShellViewModel : ObservableObject
     [RelayCommand]
     private void NavigateTo(string view)
     {
-        ActiveView = view switch
+        switch (view)
         {
-            "editor" => new EditorViewModel(),
-            _ => new ProjectListViewModel()
+            case "editor":
+                var editorVm = new EditorViewModel();
+                ActiveView = editorVm;
+                CenterView = editorVm;
+                break;
+            case "projects":
+                ActiveView = new ProjectListViewModel();
+                CenterView = null;
+                RightPanelView = null;
+                break;
+            default:
+                ActiveView = new ProjectListViewModel();
+                CenterView = null;
+                RightPanelView = null;
+                break;
+        }
+    }
+
+    public void OpenProject(string projectId, string projectTitle)
+    {
+        var editorVm = new EditorViewModel
+        {
+            ChapterTitle = projectTitle
         };
+        CenterView = editorVm;
+        StatusText = $"正在编辑: {projectTitle}";
+        PipelineStageText = "Stage04: 写前准备";
     }
 }

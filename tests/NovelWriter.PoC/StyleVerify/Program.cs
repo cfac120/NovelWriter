@@ -35,7 +35,9 @@ if (!db.StyleProfiles.Any())
     db.StyleProfiles.AddRange(
         new StyleProfile { Id = "STYLE_001", SourceTitle = "聊斋志异", SourceAuthor = "蒲松龄", ProfileJson = "句式: 文白夹杂，典雅精炼\n叙事: 简洁直叙，善用留白", Tags = "[\"志怪\",\"文言\"]" },
         new StyleProfile { Id = "STYLE_002", SourceTitle = "水浒传", SourceAuthor = "施耐庵", ProfileJson = "句式: 长短交错，对话传神\n叙事: 线性推进，情节爽快", Tags = "[\"侠义\",\"爽文\"]" },
-        new StyleProfile { Id = "STYLE_003", SourceTitle = "世说新语", SourceAuthor = "刘义庆", ProfileJson = "句式: 极简精悍，点到为止\n叙事: 片段式，回味悠长", Tags = "[\"古典\",\"含蓄\"]" }
+        new StyleProfile { Id = "STYLE_003", SourceTitle = "世说新语", SourceAuthor = "刘义庆", ProfileJson = "句式: 极简精悍，点到为止\n叙事: 片段式，回味悠长", Tags = "[\"古典\",\"含蓄\"]" },
+        new StyleProfile { Id = "STYLE_004", SourceTitle = "红楼梦", SourceAuthor = "曹雪芹", ProfileJson = "句式: 精致细腻，铺陈渲染\n叙事: 草蛇灰线，伏脉千里", Tags = "[\"古典\",\"细腻\"]" },
+        new StyleProfile { Id = "STYLE_005", SourceTitle = "三体", SourceAuthor = "刘慈欣", ProfileJson = "句式: 冷静克制，层层推进\n叙事: 悬念迭起，硬核设定", Tags = "[\"科幻\",\"硬核\"]" }
     );
     db.InterludeEntries.AddRange(
         new InterludeEntry { Id = "EP_001", SourceType = "historical", Source = "史记", CoreFact = "荆轲刺秦，易水送别: 风萧萧兮易水寒，壮士一去兮不复还。", NarrativeHook = "绝境中的壮烈抉择", AdaptableThemes = "[\"赴死\",\"忠义\"]" },
@@ -65,18 +67,21 @@ if (inter != null)
     Console.WriteLine($"  原典: {inter.CoreFact.Truncate(50)}");
 
     var adapted = await adapter.ChatAsync(
-        "你是改编专家，将典故转为修仙闲笔(≤100字)。",
-        $"典故: {inter.CoreFact}\n钩子: {inter.NarrativeHook}\n直接输出改编:",
+        "将典故转为修仙闲笔。硬性要求: 输出严格≤100字，超过截断。直接输出改编文本，不解释。",
+        $"典故: {inter.CoreFact}\n钩子: {inter.NarrativeHook}\n【改编≤100字】:",
         CancellationToken.None);
+
+    // 硬截断
+    if (adapted.Length > 100) adapted = adapted[..100];
 
     Console.WriteLine($"  改编: {adapted.Truncate(150)}");
     Console.WriteLine($"  字数: {adapted.Length} {(adapted.Length <= 100 ? "OK" : "超标")}");
     await interludeRepo.LogUsageAsync(inter.Id, pid, 1, 1);
 }
 
-// 验证3: 风格注入写作
+// 验证3: 风格注入写作 (用新卷确保风格充足)
 Console.WriteLine("\n--- 验证3: 风格注入写作 ---");
-var (style, block) = await styleInjector.SelectRandomStyleAsync(pid, 1, 10);
+var (style, block) = await styleInjector.SelectRandomStyleAsync(pid, 2, 1);
 if (style != null)
 {
     Console.Write($"  [{style.SourceTitle}] 生成中 ");
