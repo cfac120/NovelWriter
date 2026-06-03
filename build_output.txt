@@ -1,11 +1,14 @@
   正在确定要还原的项目…
-  已还原 C:\Users\cfac1\novleWriter\src\NovelWriter.Storage\NovelWriter.Storage.csproj (用时 221 毫秒)。
-  1 个项目(共 2 个)是最新的，无法还原。
-  NovelWriter.Core -> C:\Users\cfac1\novleWriter\src\NovelWriter.Core\bin\Debug\net10.0\NovelWriter.Core.dll
+  所有项目均是最新的，无法还原。
+  NovelWriter.Core -> c:\Users\cfac1\novleWriter\src\NovelWriter.Core\bin\Debug\net10.0\NovelWriter.Core.dll
+  NovelWriter.Engine -> C:\Users\cfac1\novleWriter\src\NovelWriter.Engine\bin\Debug\net10.0\NovelWriter.Engine.dll
   NovelWriter.Storage -> C:\Users\cfac1\novleWriter\src\NovelWriter.Storage\bin\Debug\net10.0\NovelWriter.Storage.dll
+C:\Users\cfac1\novleWriter\tests\NovelWriter.Tests\StyleAndInterludeTests.cs(234,34): error CS0535: “StyleImporterTests.MockStyleLlm”不实现接口成员“ILlmAdapter.ChatAsync(IEnumerable<ChatMessage>, CancellationToken)” [C:\Users\cfac1\novleWriter\tests\NovelWriter.Tests\NovelWriter.Tests.csproj]
 
-已成功生成。
+生成失败。
+
+C:\Users\cfac1\novleWriter\tests\NovelWriter.Tests\StyleAndInterludeTests.cs(234,34): error CS0535: “StyleImporterTests.MockStyleLlm”不实现接口成员“ILlmAdapter.ChatAsync(IEnumerable<ChatMessage>, CancellationToken)” [C:\Users\cfac1\novleWriter\tests\NovelWriter.Tests\NovelWriter.Tests.csproj]
     0 个警告
-    0 个错误
+    1 个错误
 
-已用时间 00:00:01.49
+已用时间 00:00:00.98

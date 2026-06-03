@@ -175,7 +175,7 @@ public class PipelineOrchestrator
         if (_styleEnabled && _styleInjector != null)
         {
             var (profile, promptBlock) = await _styleInjector.SelectRandomStyleAsync(
-                _context.ProjectId, volumeNumber, chapterNumber);
+                volumeNumber, chapterNumber);
 
             if (profile != null && !string.IsNullOrEmpty(promptBlock))
             {

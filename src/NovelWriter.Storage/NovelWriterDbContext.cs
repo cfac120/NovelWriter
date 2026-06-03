@@ -125,7 +125,6 @@ public class NovelWriterDbContext : DbContext, INovelWriterDbContext
         modelBuilder.Entity<StyleUsageLog>(e =>
         {
             e.HasKey(s => s.Id);
-            e.Property(s => s.ProjectId).HasConversion(ValueConverters.ProjectIdConverter, ValueConverters.ProjectIdComparer);
         });
 
         modelBuilder.Entity<InterludeUsageLog>(e =>

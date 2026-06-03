@@ -1,0 +1,1 @@
+应通过 "--project" 为 "dotnet test" 指定项目。
