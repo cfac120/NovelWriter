@@ -1,7 +1,9 @@
+using System.Net.Http;
 using System.Windows;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.Core.Interfaces;
+using NovelWriter.Engine.Pipeline;
 using NovelWriter.Storage;
 using NovelWriter.Storage.Repositories;
 using NovelWriter.App.ViewModels;
@@ -29,6 +31,18 @@ public partial class NovelWriterApp : Application
             services.AddScoped<IMemoryRepository, MemoryRepository>();
             services.AddScoped<IStyleLibraryRepository, StyleLibraryRepository>();
             services.AddScoped<IInterludeRepository, InterludeRepository>();
+
+            // LLM (环境变量获取 API Key)
+            services.AddSingleton<ILlmAdapter>(_ =>
+            {
+                var key = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? "";
+                var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
+                return new NovelWriter.Engine.Llm.DeepSeekAdapter(http, key);
+            });
+
+            // 生成器
+            services.AddScoped<SynopsisGenerator>();
+            services.AddScoped<OutlineGenerator>();
 
             services.AddSingleton<ShellViewModel>();
             services.AddSingleton<ShellWindow>();

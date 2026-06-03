@@ -1,0 +1,98 @@
+<Window x:Class="NovelWriter.App.Views.ProjectSetupDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="新项目设置" Height="550" Width="680"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E2E" ResizeMode="NoResize">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 步骤指示器 -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,0,0,16">
+            <TextBlock x:Name="Step1Text" Text="1. 选题材" FontSize="12" Margin="4" Foreground="#89B4FA" FontWeight="Bold"/>
+            <TextBlock Text="→" Foreground="#6C7086" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBlock x:Name="Step2Text" Text="2. 梗概" FontSize="12" Margin="4" Foreground="#6C7086"/>
+            <TextBlock Text="→" Foreground="#6C7086" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBlock x:Name="Step3Text" Text="3. 大纲" FontSize="12" Margin="4" Foreground="#6C7086"/>
+            <TextBlock Text="→" Foreground="#6C7086" VerticalAlignment="Center" Margin="4,0"/>
+            <TextBlock x:Name="Step4Text" Text="4. 开始" FontSize="12" Margin="4" Foreground="#6C7086"/>
+        </StackPanel>
+
+        <!-- Step 1: 选题材 -->
+        <StackPanel x:Name="Panel1" Grid.Row="1" Visibility="Visible">
+            <TextBlock Text="选择题材" FontSize="18" FontWeight="Bold" Foreground="#89B4FA" Margin="0,0,0,16"/>
+            <TextBlock Text="类型" Foreground="#A6ADC8" Margin="0,0,0,4"/>
+            <ComboBox x:Name="GenreCombo" Width="200" Background="#2A2A3C" Foreground="#CDD6F4"
+                      SelectedIndex="0" HorizontalAlignment="Left">
+                <ComboBoxItem Content="玄幻"/>
+                <ComboBoxItem Content="仙侠"/>
+                <ComboBoxItem Content="都市"/>
+                <ComboBoxItem Content="科幻"/>
+                <ComboBoxItem Content="历史"/>
+                <ComboBoxItem Content="奇幻"/>
+                <ComboBoxItem Content="悬疑"/>
+            </ComboBox>
+
+            <TextBlock Text="标签 (逗号分隔)" Foreground="#A6ADC8" Margin="0,16,0,4"/>
+            <TextBox x:Name="TagsBox" Text="逆袭,热血,升级" Width="300"
+                     Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="6"
+                     HorizontalAlignment="Left"/>
+
+            <TextBlock Text="目标字数" Foreground="#A6ADC8" Margin="0,16,0,4"/>
+            <TextBox x:Name="WordGoalBox" Text="30万" Width="120"
+                     Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="6"
+                     HorizontalAlignment="Left"/>
+        </StackPanel>
+
+        <!-- Step 2: 梗概 -->
+        <StackPanel x:Name="Panel2" Grid.Row="1" Visibility="Collapsed">
+            <TextBlock Text="故事梗概" FontSize="18" FontWeight="Bold" Foreground="#89B4FA" Margin="0,0,0,8"/>
+            <TextBlock x:Name="SynopsisStatus" Text="正在生成..." Foreground="#FAB387" Margin="0,0,0,8"/>
+            <TextBox x:Name="SynopsisBox" AcceptsReturn="True" TextWrapping="Wrap"
+                     Height="280" VerticalScrollBarVisibility="Auto"
+                     Foreground="#CDD6F4" Background="#1A1A2E" BorderBrush="#45475A" Padding="8"
+                     FontSize="13"/>
+        </StackPanel>
+
+        <!-- Step 3: 大纲 -->
+        <StackPanel x:Name="Panel3" Grid.Row="1" Visibility="Collapsed">
+            <TextBlock Text="分章大纲" FontSize="18" FontWeight="Bold" Foreground="#89B4FA" Margin="0,0,0,8"/>
+            <TextBlock x:Name="OutlineStatus" Text="正在生成..." Foreground="#FAB387" Margin="0,0,0,8"/>
+            <ScrollViewer Height="280" VerticalScrollBarVisibility="Auto">
+                <ItemsControl x:Name="OutlineList">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border Background="#2A2A3C" Padding="8,6" Margin="0,0,0,4" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock FontSize="12" FontWeight="SemiBold">
+                                        <Run Text="{Binding ChapterText}" Foreground="#89B4FA"/>
+                                        <Run Text=" " Foreground="Transparent"/>
+                                        <Run Text="{Binding Title}" Foreground="#CDD6F4"/>
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding Scene}" Foreground="#6C7086" FontSize="11"
+                                               TextWrapping="Wrap" MaxHeight="36" TextTrimming="CharacterEllipsis"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </StackPanel>
+
+        <!-- 底部按钮 -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+            <Button Content="上一步" Click="Prev_Click"
+                    Foreground="#6C7086" Background="#313244"
+                    BorderThickness="0" Padding="12,6" Margin="0,0,8,0"
+                    Visibility="Collapsed" x:Name="PrevBtn"/>
+            <Button Content="生成梗概" Click="Next_Click"
+                    Foreground="#89B4FA" Background="#313244"
+                    BorderThickness="0" Padding="12,6" x:Name="NextBtn"/>
+        </StackPanel>
+    </Grid>
+</Window>

@@ -69,8 +69,21 @@ public partial class ProjectListViewModel : ViewModelBase
         };
         db.Projects.Add(project);
         await db.SaveChangesAsync();
+
+        var pid = project.Id;
         NewProjectTitle = string.Empty;
         await LoadProjects();
+
+        // 弹出项目设置向导
+        var owner = Application.Current.Windows.OfType<Window>().FirstOrDefault(w => w.IsActive);
+        var setup = new Views.ProjectSetupDialog(pid) { Owner = owner };
+        setup.ShowDialog();
+
+        if (setup.SetupCompleted)
+        {
+            // 打开编辑器
+            OpenProjectCommand.Execute(pid.Value.ToString());
+        }
     }
 
     public record ProjectItem

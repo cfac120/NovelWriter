@@ -31,6 +31,8 @@ public class PipelineOrchestrator
     private readonly ILlmAdapter _writingLlm;
     private readonly ILlmAdapter _reviewLlm;
     private readonly ReviewOrchestrator _reviewOrchestrator;
+    private readonly SynopsisGenerator _synopsisGenerator;
+    private readonly OutlineGenerator _outlineGenerator;
     private readonly StyleInjector? _styleInjector;
     private readonly InterludeInjector? _interludeInjector;
     private readonly bool _styleEnabled;
@@ -52,6 +54,8 @@ public class PipelineOrchestrator
         MemoryChangeValidator validator,
         ILlmAdapter writingLlm,
         ILlmAdapter reviewLlm,
+        SynopsisGenerator synopsisGenerator,
+        OutlineGenerator outlineGenerator,
         StyleInjector? styleInjector = null,
         InterludeInjector? interludeInjector = null,
         bool styleEnabled = false,
@@ -69,6 +73,8 @@ public class PipelineOrchestrator
         _writingLlm = writingLlm;
         _reviewLlm = reviewLlm;
         _reviewOrchestrator = new ReviewOrchestrator(reviewLlm);
+        _synopsisGenerator = synopsisGenerator;
+        _outlineGenerator = outlineGenerator;
         _styleInjector = styleInjector;
         _interludeInjector = interludeInjector;
         _styleEnabled = styleEnabled;
@@ -376,18 +382,151 @@ public class PipelineOrchestrator
         return new PipelineResult { Success = true, NextStage = PipelineStage.Stage05_ChapterGenerate };
     }
 
-    // === Stage 01-03: 占位（Phase 1 实施时详细实现） ===
+    // === 场景: 从 UI 设置题材选择 ===
 
-    private Task<PipelineResult> ExecuteStage01Async(CancellationToken ct) =>
-        Task.FromResult(new PipelineResult { Success = true, NextStage = PipelineStage.Stage02_SynopsisWriting });
-
-    private Task<PipelineResult> ExecuteStage02Async(CancellationToken ct) =>
-        Task.FromResult(new PipelineResult { Success = true, NextStage = PipelineStage.Stage03_OutlineWriting });
-
-    private Task<PipelineResult> ExecuteStage03Async(CancellationToken ct)
+    public async Task SetTopicAndAdvanceAsync(string genre, string tags, string targetWords, CancellationToken ct)
     {
+        await _lock.WaitAsync(ct);
+        try
+        {
+            _context.State.TopicSelection = new TopicSelectionResult
+            {
+                Genre = genre,
+                Tags = tags,
+                TargetWordCount = targetWords
+            };
+            _context.CurrentStage = PipelineStage.Stage02_SynopsisWriting;
+        }
+        finally { _lock.Release(); }
+    }
+
+    // === Stage 01: 题材选择（人工，直接跳转） ===
+
+    private Task<PipelineResult> ExecuteStage01Async(CancellationToken ct)
+    {
+        // 题材选择由 UI 完成，直接进入 Stage02
+        if (_context.State.TopicSelection == null)
+        {
+            return Task.FromResult(new PipelineResult
+            {
+                Success = true,
+                NextStage = null,
+                ConfirmationItems =
+                [
+                    new ConfirmationItem
+                    {
+                        Type = "TopicSelection",
+                        Summary = "请在界面中选择题材和标签"
+                    }
+                ]
+            });
+        }
+
+        return Task.FromResult(new PipelineResult
+        {
+            Success = true,
+            NextStage = PipelineStage.Stage02_SynopsisWriting
+        });
+    }
+
+    // === Stage 02: 梗概生成 ===
+
+    private async Task<PipelineResult> ExecuteStage02Async(CancellationToken ct)
+    {
+        var topic = _context.State.TopicSelection
+            ?? throw new InvalidOperationException("TopicSelection not set");
+
+        Log.Information("[Stage02] Generating synopsis for genre={Genre}", topic.Genre);
+
+        var result = await _synopsisGenerator.GenerateAsync(
+            topic.Genre,
+            topic.Tags ?? "",
+            topic.TargetWordCount ?? "30万",
+            ct);
+
+        if (!result.Success)
+        {
+            return new PipelineResult { Success = false, NextStage = null };
+        }
+
+        // 写入 Context
+        _context.State.Synopsis = result.Synopsis;
+        _context.State.SynopsisTitle = result.Title;
+        _context.State.TopicSelection!.MainCharacter = new MainCharacterInfo
+        {
+            Name = result.MainCharacterName,
+            Traits = result.MainCharacterTraits
+        };
+        _context.State.TopicSelection.CoreConflict = result.CoreConflict;
+
+        Log.Information("[Stage02] Synopsis generated: {Title} ({Len} chars)",
+            result.Title, result.Synopsis.Length);
+
+        // 暂停，等待用户确认梗概
+        return new PipelineResult
+        {
+            Success = true,
+            NextStage = null,
+            ConfirmationItems =
+            [
+                new ConfirmationItem
+                {
+                    Type = "SynopsisConfirmation",
+                    Summary = $"梗概: {result.Title}",
+                    Payload = result
+                }
+            ]
+        };
+    }
+
+    // === Stage 03: 大纲生成 ===
+
+    private async Task<PipelineResult> ExecuteStage03Async(CancellationToken ct)
+    {
+        var synopsis = _context.State.Synopsis
+            ?? throw new InvalidOperationException("Synopsis not set");
+        var topic = _context.State.TopicSelection!;
+
+        var chapterCount = 10; // MVP默认10章，后续可配置
+        Log.Information("[Stage03] Generating {Chapters} chapter outlines", chapterCount);
+
+        var result = await _outlineGenerator.GenerateAsync(
+            _context.ProjectId,
+            synopsis,
+            topic.CoreConflict ?? "",
+            topic.MainCharacter?.Name ?? "主角",
+            topic.Tags ?? "",
+            chapterCount,
+            ct);
+
+        if (!result.Success || result.Outlines.Count == 0)
+        {
+            return new PipelineResult { Success = false, NextStage = null };
+        }
+
+        // 保存大纲到数据库
+        foreach (var o in result.Outlines)
+            await _outlineRepo.AddAsync(o);
+
+        _context.State.Outlines = result.Outlines;
         _context.State.CurrentChapterNumber = 1;
         _context.State.CurrentVolumeNumber = 1;
-        return Task.FromResult(new PipelineResult { Success = true, NextStage = PipelineStage.Stage04_PreWritePrepare });
+
+        Log.Information("[Stage03] {Count} chapter outlines generated and saved", result.Outlines.Count);
+
+        // 暂停，等待用户确认大纲
+        return new PipelineResult
+        {
+            Success = true,
+            NextStage = null,
+            ConfirmationItems =
+            [
+                new ConfirmationItem
+                {
+                    Type = "OutlineConfirmation",
+                    Summary = $"大纲: {result.Outlines.Count}章，{result.Outlines.Max(o => o.VolumeNumber)}卷"
+                }
+            ]
+        };
     }
 }

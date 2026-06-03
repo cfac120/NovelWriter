@@ -20,6 +20,7 @@ public record PipelineContext
 public class PipelineState
 {
     public Dtos.TopicSelectionResult? TopicSelection { get; set; }
+    public string? SynopsisTitle { get; set; }
     public string? Synopsis { get; set; }
     public IReadOnlyList<Entities.Outline>? Outlines { get; set; }
     public int CurrentChapterNumber { get; set; }
