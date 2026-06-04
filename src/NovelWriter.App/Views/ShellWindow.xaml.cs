@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.App.ViewModels;
 using NovelWriter.Core;
 using NovelWriter.Core.Entities;
+using NovelWriter.Core.Interfaces;
 using NovelWriter.Core.ValueObjects;
 using NovelWriter.Storage;
 
@@ -22,8 +24,8 @@ public partial class ShellWindow : Window
     private string? _projectDir;
     private string? _projectId;
     private string? _currentApiKey;
-    private string? _currentModel = "deepseek-v4-pro";
-    private string _currentUri = "https://api.deepseek.com/v1/chat/completions";
+    private string? _currentModel;
+    private string _currentUri = "";
     private readonly ObservableCollection<StageItem> _stages = [];
     private readonly ObservableCollection<ChatMsg> _chatMsgs = [];
     private int _activeStage;
@@ -32,27 +34,47 @@ public partial class ShellWindow : Window
     private static readonly string ProjectsRoot =
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "NovelWriter");
 
+    private static readonly string AppDir =
+        Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location) ?? ".";
+
+    private static readonly string LlmConfigPath = Path.Combine(AppDir, "llm_config.json");
+
     public ShellWindow()
     {
         InitializeComponent();
         ChatList.ItemsSource = _chatMsgs;
-        StageList.ItemsSource = _stages;
         InitStages();
         LoadLlmConfig();
-        Chat("系统", "欢迎使用 NovelWriter。新建或打开一个项目开始写作。");
     }
 
     // === 初始化 ===
     private void InitStages()
     {
-        var names = new[] { "1. 故事梗概", "2. 分章大纲", "3. AI 写作中", "4. 记忆提取", "5. 评审润色" };
+        var names = new[] { "梗概", "大纲", "写作", "记忆", "评审" };
         foreach (var n in names) _stages.Add(new StageItem { Name = n, Status = "○", Color = "#6C7086" });
-        StageList.Items.Refresh();
     }
 
     private void LoadLlmConfig()
     {
-        ApiKeyBox.Text = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? "";
+        // 优先从配置文件读取，其次环境变量
+        if (File.Exists(LlmConfigPath))
+        {
+            try
+            {
+                var json = File.ReadAllText(LlmConfigPath);
+                var cfg = JsonSerializer.Deserialize<LlmConfigDto>(json);
+                if (cfg != null)
+                {
+                    _currentApiKey = cfg.ApiKey;
+                    _currentModel = cfg.Model;
+                    _currentUri = cfg.Uri ?? "";
+                }
+            }
+            catch { /* 文件损坏则忽略 */ }
+        }
+
+        _currentApiKey ??= Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "";
+        ApiKeyBox.Text = _currentApiKey;
         ModelBox.Text = _currentModel ?? "";
         UriBox.Text = _currentUri;
     }
@@ -83,7 +105,7 @@ public partial class ShellWindow : Window
         File.WriteAllText(Path.Combine(_projectDir, "idea.md"), dlg.StoryIdea);
 
         SetProjectTitle(proj.Title);
-        Chat("系统", $"项目 {proj.Title} 已创建。");
+        ProgressText.Text = $"《{proj.Title}》— 已创建，等待开始";
         RefreshTree();
         WelcomePanel.Visibility = Visibility.Collapsed;
         await SaveProjectToDb(proj);
@@ -107,7 +129,7 @@ public partial class ShellWindow : Window
 
         SetProjectTitle(meta.Title);
         _projectId = meta.Id;
-        Chat("系统", $"已打开: {meta.Title} (阶段: {meta.Phase})");
+        ProgressText.Text = $"《{meta.Title}》— {PhaseLabel(meta.Phase)}";
         RefreshTree();
         WelcomePanel.Visibility = Visibility.Collapsed;
         LoadLlmConfig();
@@ -121,63 +143,66 @@ public partial class ShellWindow : Window
     /// </summary>
     private void SetProjectTitle(string title)
     {
-        ContentExpander.Header = title;
+        ContentHeader.Text = title;
     }
 
     /// <summary>
-    /// 验证 LLM 可用性，然后显示"开始辅助创作"按钮。
-    /// 后台读取记忆，但不自动开始。
+    /// 验证 LLM 可用性，成功则显示开始按钮。
     /// </summary>
     private async Task ValidateLlmAndShowStart()
     {
         StartAiBtn.Visibility = Visibility.Collapsed;
         StageActions.Visibility = Visibility.Collapsed;
-        BrowseHint.Visibility = Visibility.Visible;
-        BrowseHint.Text = "正在验证 LLM 连接...";
 
-        var key = ApiKeyBox.Text.Trim();
+        // 优先使用已保存的 key，再用 UI 输入框中的值
+        var key = _currentApiKey ?? ApiKeyBox.Text.Trim();
         if (string.IsNullOrEmpty(key))
         {
-            Chat("错误", "请先在右下角配置 LLM API Key");
-            BrowseHint.Text = "LLM 未配置 — 只能浏览项目内容。配置 API Key 后可开始辅助创作。";
+            ProgressText.Text = "LLM 未配置 — 请点击左下角 ▼ 设置";
             return;
         }
 
         try
         {
+            ShowThinking("验证 LLM 连接...");
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            var request = new HttpRequestMessage(HttpMethod.Get,
-                UriBox.Text.Trim().Replace("/chat/completions", "/models"));
-            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
-            var resp = await http.SendAsync(request);
-            var valid = resp.IsSuccessStatusCode;
+            using var request = new HttpRequestMessage(HttpMethod.Post, _currentUri);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
-            if (valid)
+            var body = new
             {
-                BrowseHint.Text = "LLM 已连接。点击下方按钮开始辅助创作，或直接浏览项目内容。";
-                Chat("系统", "LLM 连接成功。后台已读取项目记忆。");
+                model = _currentModel ?? "",
+                messages = new[] { new { role = "user", content = "hi" } },
+                max_tokens = 1
+            };
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+            var resp = await http.SendAsync(request);
+            HideThinking();
+
+            if (resp.IsSuccessStatusCode)
+            {
+                StageActions.Visibility = Visibility.Visible;
                 StartAiBtn.Visibility = Visibility.Visible;
+                ProgressText.Text = string.IsNullOrEmpty(_currentModel) ? "✓ 已连接" : $"✓ 已连接 {_currentModel}";
             }
             else
             {
-                BrowseHint.Text = $"LLM 验证失败 ({resp.StatusCode}) — 只能浏览项目内容。检查 API 配置后重试。";
-                Chat("错误", $"API 验证失败: {resp.StatusCode}");
+                var errBody = await resp.Content.ReadAsStringAsync();
+                Chat("错误", $"API 返回 {(int)resp.StatusCode}: {errBody.Truncate(200)}");
             }
         }
         catch (Exception ex)
         {
-            BrowseHint.Text = $"LLM 连接异常 — 只能浏览项目内容。{ex.Message}";
-            Chat("错误", $"API 连接失败: {ex.Message}");
+            HideThinking();
+            Chat("错误", $"无法连接: {ex.Message.Truncate(200)}");
         }
     }
 
-    /// <summary>
-    /// 用户点击"开始辅助创作"
-    /// </summary>
     private void StartAiBtn_Click(object sender, RoutedEventArgs e)
     {
         StartAiBtn.Visibility = Visibility.Collapsed;
-        BrowseHint.Visibility = Visibility.Collapsed;
         _ = StartAiPipelineAsync();
     }
 
@@ -196,7 +221,7 @@ public partial class ShellWindow : Window
                 if (meta != null && !string.IsNullOrWhiteSpace(meta.Title))
                     return meta;
             }
-            catch { Chat("警告", "project.json 已损坏，尝试从目录恢复..."); }
+            catch { /* 损坏文件，从目录恢复 */ }
         }
 
         // === 恢复逻辑: 扫描目录推断项目状态 ===
@@ -212,8 +237,6 @@ public partial class ShellWindow : Window
         if (hasSynopsis) phase = ProjectPhase.SynopsisDone;
         if (hasOutline) phase = ProjectPhase.OutlineDone;
         if (hasChapters) phase = ProjectPhase.ChapterActive;
-
-        Chat("恢复", $"已从目录恢复: {title}, 阶段={phase}");
 
         var recovered = new ProjectMeta { Title = title, Phase = phase, Idea = idea };
         SaveProjectMeta(recovered);
@@ -274,6 +297,7 @@ public partial class ShellWindow : Window
         if (_projectDir == null || sender is not FrameworkElement el || el.Tag is not string tag) return;
         var file = tag switch
         {
+            "idea" => Path.Combine(_projectDir, "idea.md"),
             "synopsis" => Path.Combine(_projectDir, "synopsis.md"),
             "outline" => Path.Combine(_projectDir, "outline.md"),
             "characters" => Path.Combine(_projectDir, "memory", "characters.md"),
@@ -347,19 +371,23 @@ public partial class ShellWindow : Window
     }
 
     // === AI 流水线 ===
+    private const int MaxPipelineSteps = 100;     // 硬性上限，防止意外无限调用
+
     private async Task StartAiPipelineAsync()
     {
         if (_projectDir == null) return;
         _aiCts?.Cancel();
         _aiCts = new CancellationTokenSource();
         var ct = _aiCts.Token;
+        var stepCount = 0;
 
         try
         {
             // Stage 1: 梗概
+            GuardStep(ref stepCount);
             SetStage(0, true);
             ShowActions(false);
-            Chat("AI", "正在生成故事梗概...");
+            ShowThinking("正在生成故事梗概...");
 
             var idea = File.Exists(Path.Combine(_projectDir, "idea.md"))
                 ? await File.ReadAllTextAsync(Path.Combine(_projectDir, "idea.md"), ct) : "";
@@ -368,6 +396,7 @@ public partial class ShellWindow : Window
             var meta = LoadOrRecoverMeta();
             var synopsis = await gen.GenerateAsync(meta?.Title ?? "未命名", "", "30万", ct);
 
+            HideThinking();
             if (synopsis.Success)
             {
                 var synopsisText = $"# {synopsis.Title}\n\n**核心冲突:** {synopsis.CoreConflict}\n**主角:** {synopsis.MainCharacterName}\n\n{synopsis.Synopsis}";
@@ -378,12 +407,13 @@ public partial class ShellWindow : Window
             ShowActions(true);
             Chat("AI", $"梗概生成完成。请确认或重写。\n书名: {synopsis.Title}\n{synopsis.Synopsis.Truncate(150)}");
 
-            // Stage 2: 大纲 (梗概确认后立即写盘)
+            // Stage 2: 大纲
             await WaitConfirmOrRetryAsync(0, ct);
+            GuardStep(ref stepCount);
             UpdatePhase(ProjectPhase.SynopsisDone);
             SetStage(1, true);
             ShowActions(false);
-            Chat("AI", "正在生成分章大纲...");
+            ShowThinking("正在生成分章大纲（含 L3 记忆初始化）...");
 
             var outlineGen = NovelWriterApp.Services.GetRequiredService<NovelWriter.Engine.Pipeline.OutlineGenerator>();
             var synopsisText2 = File.Exists(Path.Combine(_projectDir, "synopsis.md"))
@@ -392,6 +422,7 @@ public partial class ShellWindow : Window
             var projGuid = string.IsNullOrEmpty(progId) ? Guid.NewGuid() : Guid.Parse(progId + "00000000");
             var outline = await outlineGen.GenerateAsync(new ProjectId(projGuid), synopsisText2, "", synopsis.MainCharacterName, "", 10, ct);
 
+            HideThinking();
             if (outline.Success)
             {
                 var sb = new System.Text.StringBuilder();
@@ -402,7 +433,6 @@ public partial class ShellWindow : Window
                     sb.AppendLine(o.KeyEvents ?? "");
                     sb.AppendLine();
 
-                    // 写章节文件
                     var chPath = Path.Combine(_projectDir, "chapters", $"第{o.ChapterNumber:00}章.md");
                     if (!File.Exists(chPath))
                         await File.WriteAllTextAsync(chPath, $"# 第{o.ChapterNumber}章\n\n{o.SceneDescription}\n\n(待AI生成)\n", ct);
@@ -414,21 +444,24 @@ public partial class ShellWindow : Window
             ShowActions(true);
             Chat("AI", $"大纲生成完成 ({outline.Outlines.Count}章)。请确认或重写。");
 
-            // Stage 3+: 逐章写作 (大纲确认后写盘)
+            // Stage 3+：逐章写作
             await WaitConfirmOrRetryAsync(1, ct);
+            GuardStep(ref stepCount);
             UpdatePhase(ProjectPhase.OutlineDone);
             for (int i = 2; i < _stages.Count; i++)
             {
+                GuardStep(ref stepCount);
                 SetStage(i, true);
                 ShowActions(false);
-                Chat("AI", $"Stage {i + 1} 执行中...");
-                await Task.Delay(500, ct); // placeholder
+                ShowThinking($"{_stages[i].Name} 阶段执行中...");
+                await Task.Delay(500, ct);
+                HideThinking();
                 SetStage(i, false);
                 ShowActions(true);
             }
         }
-        catch (OperationCanceledException) { Chat("系统", "流水线已取消"); }
-        catch (Exception ex) { Chat("错误", ex.Message); }
+        catch (OperationCanceledException) { HideThinking(); Chat("系统", "流水线已取消"); }
+        catch (Exception ex) { HideThinking(); Chat("错误", ex.Message); }
     }
 
     private TaskCompletionSource<int>? _confirmTcs;
@@ -439,19 +472,19 @@ public partial class ShellWindow : Window
         {
             _confirmTcs = new TaskCompletionSource<int>();
             var result = await _confirmTcs.Task;
-            if (result == 1) return; // confirmed
-            if (result == 2) // retry
+            if (result == 1) return;
+            if (result == 2)
             {
-                // 重新生成此阶段的产出
-                Chat("AI", "正在重新生成...");
-                await Task.Delay(1000, ct); // TODO: actual regeneration
-                Chat("AI", "重新生成完成。");
+                ShowThinking("重新生成中...");
+                await Task.Delay(1000, ct);
+                HideThinking();
+                Chat("AI", "已重新生成。");
             }
         }
     }
 
-    private void StageConfirm_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(1); ShowActions(false); Chat("系统", "✓ 已确认"); }
-    private void StageRewrite_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(2); Chat("系统", "↻ 触发重写"); }
+    private void StageConfirm_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(1); ShowActions(false); }
+    private void StageRewrite_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(2); }
     private void StageRetry_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(2); }
 
     private void SetStage(int index, bool active)
@@ -462,12 +495,24 @@ public partial class ShellWindow : Window
             else if (!active && i <= index) { _stages[i].Status = "✓"; _stages[i].Color = "#A6E3A1"; }
             else { _stages[i].Status = "○"; _stages[i].Color = "#6C7086"; }
         }
-        StageList.Items.Refresh();
+        var stage = _stages[index];
+        ProgressText.Text = active ? $"● {stage.Name} 进行中..." : $"✓ {stage.Name} 已完成";
     }
 
     private void ShowActions(bool show)
     {
-        StageActions.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (show)
+        {
+            StageActions.Visibility = Visibility.Visible;
+            ConfirmBtn.Visibility = Visibility.Visible;
+            RewriteBtn.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            StageActions.Visibility = Visibility.Collapsed;
+            ConfirmBtn.Visibility = Visibility.Collapsed;
+            RewriteBtn.Visibility = Visibility.Collapsed;
+        }
     }
 
     // === 聊天 ===
@@ -484,37 +529,112 @@ public partial class ShellWindow : Window
         ChatScroll.ScrollToEnd();
     }
 
+    private CancellationTokenSource? _chatCts;
+
     private void ChatSend_Click(object sender, RoutedEventArgs e)
     {
         var text = ChatInput.Text.Trim();
         if (string.IsNullOrEmpty(text)) return;
+
+        // 取消上一次仍在进行的请求
+        _chatCts?.Cancel();
+        _chatCts = new CancellationTokenSource();
+
         Chat("用户", text);
         ChatInput.Text = "";
-        _ = AutoReplyAsync(text);
+        ChatInput.IsEnabled = false;
+        _ = AutoReplyAsync(text, _chatCts.Token).ContinueWith(_ =>
+            Dispatcher.Invoke(() => ChatInput.IsEnabled = true));
     }
 
-    private async Task AutoReplyAsync(string userMsg)
+    // 共享 HttpClient，避免每次 new（适配器基类已有重试/限速保护）
+    private static readonly HttpClient _sharedHttp = new() { Timeout = TimeSpan.FromMinutes(5) };
+
+    private async Task AutoReplyAsync(string userMsg, CancellationToken ct = default)
     {
-        var key = ApiKeyBox.Text.Trim();
-        if (string.IsNullOrEmpty(key)) { Chat("错误", "请先配置 LLM API Key"); return; }
+        var key = _currentApiKey;
+        if (string.IsNullOrEmpty(key))
+        {
+            Chat("错误", "请先在左下角 ▼ 配置 LLM API Key");
+            return;
+        }
+
         try
         {
-            using var http = new HttpClient { Timeout = TimeSpan.FromMinutes(5) };
-            var adapter = new NovelWriter.Engine.Llm.GenericOpenAiAdapter(http, key, ModelBox.Text.Trim(), UriBox.Text.Trim());
-            var resp = await adapter.ChatAsync("你是NovelWriter助手", userMsg, CancellationToken.None);
+            ShowThinking("AI 思考中...");
+            var adapter = new NovelWriter.Engine.Llm.GenericOpenAiAdapter(
+                _sharedHttp, key, _currentModel ?? "", _currentUri);
+            var resp = await adapter.ChatAsync("你是NovelWriter助手", userMsg, ct);
+            HideThinking();
             Chat("AI", resp);
         }
-        catch (Exception ex) { Chat("错误", ex.Message); }
+        catch (OperationCanceledException) { HideThinking(); }
+        catch (Exception ex) { HideThinking(); Chat("错误", ex.Message); }
     }
 
     // === LLM 配置 ===
+    private void LlmConfig_Click(object sender, RoutedEventArgs e)
+    {
+        LlmPopup.IsOpen = !LlmPopup.IsOpen;
+    }
+
     private void SaveLlmConfig_Click(object sender, RoutedEventArgs e)
     {
         _currentApiKey = ApiKeyBox.Text.Trim();
         _currentModel = ModelBox.Text.Trim();
         _currentUri = UriBox.Text.Trim();
-        Environment.SetEnvironmentVariable("DEEPSEEK_API_KEY", _currentApiKey, EnvironmentVariableTarget.Process);
-        Chat("系统", $"已连接: {_currentModel}");
+
+        // 持久化到 app 目录下的配置文件
+        var cfg = new LlmConfigDto { ApiKey = _currentApiKey, Model = _currentModel, Uri = _currentUri };
+        File.WriteAllText(LlmConfigPath, JsonSerializer.Serialize(cfg));
+
+        LlmNameText.Text = string.IsNullOrEmpty(_currentModel) ? "未配置 LLM" : _currentModel;
+        LlmPopup.IsOpen = false;
+
+        if (!string.IsNullOrEmpty(_currentApiKey))
+        {
+            ProgressText.Text = $"已配置 {_currentModel}，点击 ▶ 开始";
+            _ = ValidateLlmConnectionQuick();
+        }
+        else
+        {
+            ProgressText.Text = "LLM 未配置 — 请点击左下角 ▼ 设置";
+        }
+    }
+
+    private async Task ValidateLlmConnectionQuick()
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            using var request = new HttpRequestMessage(HttpMethod.Post, _currentUri);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _currentApiKey);
+
+            var body = new
+            {
+                model = _currentModel ?? "",
+                messages = new[] { new { role = "user", content = "hi" } },
+                max_tokens = 1
+            };
+            request.Content = new StringContent(
+                JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+
+            var resp = await http.SendAsync(request);
+
+            if (resp.IsSuccessStatusCode)
+                ProgressText.Text = string.IsNullOrEmpty(_currentModel) ? "✓ 已连接" : $"✓ 已连接 {_currentModel}";
+            else
+            {
+                var errBody = await resp.Content.ReadAsStringAsync();
+                ProgressText.Text = $"⚠ 连接失败 ({resp.StatusCode})";
+                Chat("错误", $"API 返回 {(int)resp.StatusCode}: {errBody.Truncate(200)}");
+            }
+        }
+        catch (Exception ex)
+        {
+            ProgressText.Text = "⚠ 连接异常";
+            Chat("错误", $"无法连接: {ex.Message.Truncate(200)}");
+        }
     }
 
     // === 风格/插曲 ===
@@ -579,6 +699,33 @@ public partial class ShellWindow : Window
         string.Join("_", name.Split(Path.GetInvalidFileNameChars())).Trim();
 
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
+
+    // === 思考状态 ===
+    private void ShowThinking(string text)
+    {
+        ThinkingText.Text = text;
+        ThinkingBar.Visibility = Visibility.Visible;
+    }
+
+    private void HideThinking()
+    {
+        ThinkingBar.Visibility = Visibility.Collapsed;
+    }
+
+    private static string PhaseLabel(ProjectPhase phase) => phase switch
+    {
+        ProjectPhase.TopicPicked => "已创建，等待开始",
+        ProjectPhase.SynopsisDone => "梗概已完成",
+        ProjectPhase.OutlineDone => "大纲已就绪",
+        ProjectPhase.ChapterActive => "写作进行中",
+        _ => "等待开始"
+    };
+
+    private static void GuardStep(ref int count)
+    {
+        if (++count > MaxPipelineSteps)
+            throw new InvalidOperationException($"流水线执行步骤超过上限 ({MaxPipelineSteps})，已自动停止防止 token 滥用。");
+    }
 }
 
 // === 数据类 ===
@@ -587,6 +734,8 @@ public class StageItem
     public string Name { get; set; } = "";
     public string Status { get; set; } = "○";
     public string Color { get; set; } = "#6C7086";
+
+    public override string ToString() => $"{Status} {Name}";
 }
 
 public class ChatMsg
@@ -603,6 +752,13 @@ public enum ProjectPhase
     SynopsisDone,   // 梗概已生成并确认
     OutlineDone,    // 大纲已生成并确认
     ChapterActive   // 正在逐章写作
+}
+
+public class LlmConfigDto
+{
+    public string? ApiKey { get; set; }
+    public string? Model { get; set; }
+    public string? Uri { get; set; }
 }
 
 public class ProjectMeta

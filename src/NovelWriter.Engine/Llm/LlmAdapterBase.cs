@@ -14,12 +14,17 @@ namespace NovelWriter.Engine.Llm;
 /// LLM 适配器抽象基类，封装重试/超时/降级/日志/流式输出共用逻辑。
 /// 子类仅需覆写 BuildRequest 和 ParseResponse。
 /// </summary>
-public abstract class LlmAdapterBase : ILlmAdapter
+public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
 {
     protected readonly HttpClient HttpClient;
     protected readonly string ApiKey;
     protected readonly string ChatEndpoint;
     protected readonly ResiliencePipeline<HttpResponseMessage> ResiliencePipeline;
+
+    // 速率限制：最少间隔2秒，防止快速连续调用耗尽配额
+    private static readonly SemaphoreSlim RateGate = new(1, 1);
+    private static DateTime _lastCallTime = DateTime.MinValue;
+    private static readonly TimeSpan MinCallInterval = TimeSpan.FromSeconds(2);
 
     protected LlmAdapterBase(HttpClient httpClient, string apiKey, string chatEndpoint)
     {
@@ -49,6 +54,31 @@ public abstract class LlmAdapterBase : ILlmAdapter
             .Build();
     }
 
+    /// <summary>
+    /// 守卫：确保两次调用之间有最小间隔，防止 token 滥用。
+    /// </summary>
+    private static async Task WaitRateGateAsync(CancellationToken ct)
+    {
+        await RateGate.WaitAsync(ct);
+        try
+        {
+            var elapsed = DateTime.UtcNow - _lastCallTime;
+            if (elapsed < MinCallInterval)
+                await Task.Delay(MinCallInterval - elapsed, ct);
+            _lastCallTime = DateTime.UtcNow;
+        }
+        finally
+        {
+            RateGate.Release();
+        }
+    }
+
+    public void Dispose()
+    {
+        HttpClient.Dispose();
+        GC.SuppressFinalize(this);
+    }
+
     public abstract string ModelName { get; }
     public abstract int MaxContextTokens { get; }
     public abstract int RecommendedOutputTokens { get; }
@@ -58,6 +88,7 @@ public abstract class LlmAdapterBase : ILlmAdapter
     /// </summary>
     public async Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
     {
+        await WaitRateGateAsync(ct);
         var requestBody = BuildRequest(systemPrompt, userMessage, stream: false);
         var response = await SendRequestAsync(requestBody, ct);
         return ParseResponse(response);
@@ -86,35 +117,65 @@ public abstract class LlmAdapterBase : ILlmAdapter
 
     /// <summary>
     /// 流式单轮对话。用于章节写作等长输出场景，UI 可逐步渲染文本。
+    /// 内置重试（最多1次额外尝试）、速率限制和超时保护。
     /// </summary>
     public async IAsyncEnumerable<string> StreamChatAsync(
         string systemPrompt, string userMessage,
         [EnumeratorCancellation] CancellationToken ct = default)
     {
+        await WaitRateGateAsync(ct);
+
         var requestBody = BuildRequest(systemPrompt, userMessage, stream: true);
         var json = JsonSerializer.Serialize(requestBody);
-        using var request = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
-        request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        using var response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-        response.EnsureSuccessStatusCode();
-
-        using var stream = await response.Content.ReadAsStreamAsync(ct);
-        using var reader = new StreamReader(stream);
-
-        string? line;
-        while ((line = await reader.ReadLineAsync(ct)) != null)
+        const int maxAttempts = 2;
+        for (int attempt = 0; attempt < maxAttempts; attempt++)
         {
-            if (string.IsNullOrEmpty(line)) continue;
+            HttpResponseMessage response;
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+                request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
-            // SSE format: "data: {json}" or "data: [DONE]"
-            if (!line.StartsWith("data: ")) continue;
-            var data = line["data: ".Length..];
-            if (data == "[DONE]") break;
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
+                using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
+                response = await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                if (attempt < maxAttempts - 1) { await Task.Delay(2000, ct); continue; }
+                throw new TimeoutException("流式请求超时（5分钟），已重试全部失败");
+            }
+            catch (HttpRequestException) when (attempt < maxAttempts - 1)
+            {
+                await Task.Delay(2000, ct);
+                continue;
+            }
 
-            var chunk = ParseStreamChunk(data);
-            if (chunk != null) yield return chunk;
+            if (!response.IsSuccessStatusCode && attempt < maxAttempts - 1)
+            {
+                response.Dispose();
+                await Task.Delay(2000, ct);
+                continue;
+            }
+            response.EnsureSuccessStatusCode();
+
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(stream);
+
+            string? line;
+            while ((line = await reader.ReadLineAsync(ct)) != null)
+            {
+                if (string.IsNullOrEmpty(line)) continue;
+                if (!line.StartsWith("data: ")) continue;
+                var data = line["data: ".Length..];
+                if (data == "[DONE]") yield break;
+
+                var chunk = ParseStreamChunk(data);
+                if (chunk != null) yield return chunk;
+            }
+            yield break;
         }
     }
 

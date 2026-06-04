@@ -29,7 +29,7 @@ public class DeepSeekAdapter : LlmAdapterBase
             model = "deepseek-v4-pro",
             messages,
             stream,
-            max_tokens = stream ? RecommendedOutputTokens : (int?)null,
+            max_tokens = RecommendedOutputTokens,   // 始终设置保护上限 8192
             temperature = stream ? 0.85 : 0.3
         };
     }

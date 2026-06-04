@@ -11,6 +11,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <!-- === 菜单栏 === -->
@@ -42,23 +43,22 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
 
-                        <!-- 小说内容(标题动态替换) -->
-                        <Expander x:Name="ContentExpander" Header="NovelWriter" IsExpanded="True" Margin="4,4,4,0">
-                            <Expander.HeaderTemplate>
-                                <DataTemplate>
-                                    <TextBlock x:Name="ContentHeader" Text="NovelWriter" FontSize="13"
-                                               FontWeight="SemiBold" Foreground="#89B4FA"/>
-                                </DataTemplate>
-                            </Expander.HeaderTemplate>
+                        <!-- 小说标题 -->
+                        <Expander x:Name="ContentExpander" IsExpanded="True" Margin="4,4,4,0">
+                            <Expander.Header>
+                                <TextBlock x:Name="ContentHeader" Text="NovelWriter" FontSize="13"
+                                           FontWeight="SemiBold" Foreground="#89B4FA"/>
+                            </Expander.Header>
                             <StackPanel Margin="8,4">
+                                <TextBlock x:Name="IdeaFile" Text="故事创意" Foreground="#6C7086" FontSize="12"
+                                           Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="idea"/>
                                 <TextBlock x:Name="SynopsisFile" Text="梗概" Foreground="#6C7086" FontSize="12"
                                            Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="synopsis"/>
                                 <TextBlock x:Name="OutlineFile" Text="大纲" Foreground="#6C7086" FontSize="12"
                                            Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="outline"/>
                                 <TreeView x:Name="ChapterTree" Background="Transparent" BorderThickness="0"
                                           Foreground="#CDD6F4" Margin="0,4,0,8"
-    
-                                      SelectedItemChanged="ChapterTreeSelected"/>
+                                          SelectedItemChanged="ChapterTreeSelected"/>
                                 <TextBlock Text="L3 记忆" Foreground="#89B4FA" FontSize="12" Margin="0,8,0,4"/>
                                 <TextBlock x:Name="CharFile" Text="人物档案" Foreground="#6C7086" FontSize="11"
                                            Margin="8,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="characters"/>
@@ -161,52 +161,39 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- 阶段指示器 + 操作按钮 -->
-                    <Border Grid.Row="0" Background="#181825" Padding="10" BorderBrush="#313244" BorderThickness="0,0,0,1">
-                        <StackPanel>
-                            <TextBlock Text="AI 写作进度" FontSize="13" FontWeight="SemiBold"
-                                       Foreground="#89B4FA" Margin="0,0,0,8"/>
-                            <ItemsControl x:Name="StageList">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,2">
-                                            <TextBlock Text="{Binding Status}" Foreground="{Binding Color}" FontSize="15" Width="22"/>
-                                            <TextBlock Text="{Binding Name}" Foreground="{Binding Color}" FontSize="12" VerticalAlignment="Center"/>
-                                            <Button x:Name="StageRetry" Content="重写" FontSize="10"
-                                                    Foreground="#FAB387" Background="Transparent" BorderThickness="0"
-                                                    Padding="4,0" Cursor="Hand" Tag="{Binding}"
-                                                    Click="StageRetry_Click" Visibility="Collapsed"/>
-                                        </StackPanel>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                            <!-- 开始创作按钮(新建/打开后显示) -->
-                            <Button x:Name="StartAiBtn" Content="▶ 开始辅助创作" Height="32" Margin="0,8,0,0"
-                                    Foreground="#1E1E2E" Background="#89B4FA" BorderThickness="0" FontSize="11"
-                                    Click="StartAiBtn_Click" Visibility="Collapsed"/>
-
-                            <!-- 阶段确认/重写按钮(创作中显示) -->
-                            <StackPanel x:Name="StageActions" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
-                                <Button x:Name="ConfirmBtn" Content="✓ 确认" Width="80" Height="28"
-                                        Foreground="#1E1E2E" Background="#A6E3A1" BorderThickness="0" FontSize="11"
-                                        Click="StageConfirm_Click" Margin="0,0,8,0"/>
-                                <Button x:Name="RewriteBtn" Content="↻ 重写" Width="80" Height="28"
-                                        Foreground="#1E1E2E" Background="#FAB387" BorderThickness="0" FontSize="11"
-                                        Click="StageRewrite_Click"/>
+                    <!-- === 顶部：进度行 + 操作按钮 === -->
+                    <Border Grid.Row="0" Background="#181825" Padding="10,7" BorderBrush="#313244" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="ProgressText" Text="等待开始" Foreground="#A6ADC8"
+                                       FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       FontWeight="Medium"/>
+                            <StackPanel x:Name="StageActions" Grid.Column="1" Orientation="Horizontal"
+                                        Visibility="Collapsed">
+                                <Button x:Name="StartAiBtn" Content="▶ 开始" Height="26"
+                                        Foreground="#1E1E2E" Background="#89B4FA" BorderThickness="0" FontSize="11"
+                                        Click="StartAiBtn_Click" Visibility="Collapsed" Margin="0,0,4,0"/>
+                                <Button x:Name="ConfirmBtn" Content="✓ 确认" Width="56" Height="24"
+                                        Foreground="#1E1E2E" Background="#A6E3A1" BorderThickness="0" FontSize="10"
+                                        Click="StageConfirm_Click" Visibility="Collapsed" Margin="0,0,4,0"/>
+                                <Button x:Name="RewriteBtn" Content="↻ 重写" Width="56" Height="24"
+                                        Foreground="#1E1E2E" Background="#FAB387" BorderThickness="0" FontSize="10"
+                                        Click="StageRewrite_Click" Visibility="Collapsed"/>
                             </StackPanel>
-                            <!-- "浏览模式" 提示 -->
-                            <TextBlock x:Name="BrowseHint" Text="正在浏览项目内容..." Foreground="#6C7086"
-                                       FontSize="10" Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
-                        </StackPanel>
+                        </Grid>
                     </Border>
 
-                    <!-- 对话区 -->
+                    <!-- === 中部：主体区（聊天 + 思考状态） === -->
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
+                        <!-- 聊天内容 -->
                         <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto" Background="#11111B">
                             <ItemsControl x:Name="ChatList" Margin="8">
                                 <ItemsControl.ItemTemplate>
@@ -220,64 +207,91 @@
                             </ItemsControl>
                         </ScrollViewer>
 
-                        <Border Grid.Row="1" Background="#181825" Padding="6" BorderBrush="#313244" BorderThickness="0,1,0,0">
+                        <!-- LLM 思考/编辑状态条 -->
+                        <Border x:Name="ThinkingBar" Grid.Row="1" Background="#1A1A2E"
+                                Padding="10,6" BorderBrush="#45475A" BorderThickness="0,1,0,0"
+                                Visibility="Collapsed">
                             <Grid>
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="*"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
-                                <TextBox x:Name="ChatInput" AcceptsReturn="True" TextWrapping="Wrap"
-                                         MinHeight="50" MaxHeight="120"
-                                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A"
-                                         Padding="6" FontSize="11" VerticalScrollBarVisibility="Auto"/>
-                                <Button Grid.Row="1" Content="发送 (Ctrl+Enter)" Height="26"
-                                        Foreground="#89B4FA" Background="#313244" BorderThickness="0"
-                                        FontSize="10" Click="ChatSend_Click" Margin="0,4,0,0"/>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Border Background="#89B4FA" CornerRadius="2" Width="4" Height="14"
+                                        VerticalAlignment="Center" Margin="0,0,8,0"
+                                        x:Name="ThinkingDot">
+                                    <Border.Triggers>
+                                        <EventTrigger RoutedEvent="Loaded">
+                                            <BeginStoryboard>
+                                                <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                                                    <DoubleAnimation Storyboard.TargetName="ThinkingDot"
+                                                                     Storyboard.TargetProperty="Opacity"
+                                                                     From="1.0" To="0.2" Duration="0:0:0.8"/>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </EventTrigger>
+                                    </Border.Triggers>
+                                </Border>
+                                <TextBlock x:Name="ThinkingText" Grid.Column="1" Text="AI 思考中..."
+                                           Foreground="#89B4FA" FontSize="11" VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"/>
                             </Grid>
                         </Border>
                     </Grid>
 
-                    <!-- LLM 配置 -->
-                    <Border Grid.Row="2" Background="#181825" Padding="8" BorderBrush="#313244" BorderThickness="0,1,0,0">
+                    <!-- === 底部：对话输入区 === -->
+                    <Border Grid.Row="2" Background="#181825" Padding="6" BorderBrush="#313244" BorderThickness="0,1,0,0">
                         <StackPanel>
-                            <TextBlock Text="LLM 配置" FontSize="11" FontWeight="SemiBold"
-                                       Foreground="#6C7086" Margin="0,0,0,4"/>
-                            <Grid Margin="0,2">
+                            <TextBox x:Name="ChatInput" AcceptsReturn="True" TextWrapping="Wrap"
+                                     MinHeight="50" MaxHeight="120"
+                                     Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A"
+                                     Padding="6" FontSize="11" VerticalScrollBarVisibility="Auto"/>
+                            <Grid Margin="0,4,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="50"/>
                                     <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Text="Key" Foreground="#6C7086" FontSize="10" VerticalAlignment="Center"/>
-                                <TextBox x:Name="ApiKeyBox" Grid.Column="1" Height="22" FontSize="10"
-                                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock x:Name="LlmNameText" Text="未配置 LLM" Foreground="#89B4FA" FontSize="11" VerticalAlignment="Center"/>
+                                    <Button x:Name="LlmArrowBtn" Content="▼" FontSize="8" Foreground="#6C7086"
+                                            Background="Transparent" BorderThickness="0" Padding="4,0"
+                                            Click="LlmConfig_Click" Cursor="Hand" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="发送 ↵" Height="26"
+                                        Foreground="#89B4FA" Background="#313244" BorderThickness="0" FontSize="10"
+                                        Click="ChatSend_Click" Padding="12,0"/>
                             </Grid>
-                            <Grid Margin="0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="50"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="模型" Foreground="#6C7086" FontSize="10" VerticalAlignment="Center"/>
-                                <TextBox x:Name="ModelBox" Grid.Column="1" Height="22" FontSize="10"
-                                         Text="deepseek-v4-pro"
-                                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
-                            </Grid>
-                            <Grid Margin="0,2">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="50"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Text="URI" Foreground="#6C7086" FontSize="10" VerticalAlignment="Center"/>
-                                <TextBox x:Name="UriBox" Grid.Column="1" Height="22" FontSize="10"
-                                         Text="https://api.deepseek.com/v1/chat/completions"
-                                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
-                            </Grid>
-                            <Button Content="保存并连接" Height="26" Margin="0,4,0,0" FontSize="10"
-                                    Foreground="#A6E3A1" Background="#313244" BorderThickness="0"
-                                    Click="SaveLlmConfig_Click"/>
                         </StackPanel>
                     </Border>
                 </Grid>
             </Border>
         </Grid>
+
+        <!-- === 状态栏 === -->
+        <Border Grid.Row="2" Background="#11111B" Padding="8,3" BorderBrush="#313244" BorderThickness="0,1,0,0">
+            <TextBlock x:Name="StatusBarText" Text="就绪" Foreground="#6C7086" FontSize="11"
+                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+        </Border>
+
+        <!-- LLM 配置弹出面板 -->
+        <Popup x:Name="LlmPopup" PlacementTarget="{Binding ElementName=LlmArrowBtn}" Placement="Top"
+               StaysOpen="False" AllowsTransparency="True">
+            <Border Background="#181825" BorderBrush="#45475A" BorderThickness="1" CornerRadius="4" Padding="12" Width="280">
+                <StackPanel>
+                    <TextBlock Text="LLM 配置" FontSize="12" FontWeight="SemiBold" Foreground="#89B4FA" Margin="0,0,0,8"/>
+                    <TextBlock Text="API Key" Foreground="#6C7086" FontSize="10" Margin="0,0,0,2"/>
+                    <TextBox x:Name="ApiKeyBox" Height="22" FontSize="10"
+                             Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
+                <TextBlock Text="模型" Foreground="#6C7086" FontSize="10" Margin="0,6,0,2"/>
+                <TextBox x:Name="ModelBox" Height="22" FontSize="10"
+                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
+                <TextBlock Text="API 端点 (完整 URL)" Foreground="#6C7086" FontSize="10" Margin="0,6,0,2"/>
+                <TextBox x:Name="UriBox" Height="22" FontSize="10"
+                         Foreground="#CDD6F4" Background="#2A2A3C" BorderBrush="#45475A" Padding="4"/>
+                    <Button Content="保存并连接" Height="26" Margin="0,8,0,0" FontSize="10"
+                            Foreground="#A6E3A1" Background="#313244" BorderThickness="0"
+                            Click="SaveLlmConfig_Click"/>
+                </StackPanel>
+            </Border>
+        </Popup>
     </Grid>
 </Window>

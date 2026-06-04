@@ -45,9 +45,11 @@ public partial class NovelWriterApp : Application
 
             services.AddSingleton<ILlmAdapter>(_ =>
             {
-                var key = Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY") ?? "";
+                var key = Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "";
+                var model = Environment.GetEnvironmentVariable("LLM_MODEL") ?? "deepseek-chat";
+                var url = Environment.GetEnvironmentVariable("LLM_BASE_URL") ?? "";
                 var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-                return new NovelWriter.Engine.Llm.DeepSeekAdapter(http, key);
+                return new NovelWriter.Engine.Llm.GenericOpenAiAdapter(http, key, model, url);
             });
 
             services.AddScoped<SynopsisGenerator>();
