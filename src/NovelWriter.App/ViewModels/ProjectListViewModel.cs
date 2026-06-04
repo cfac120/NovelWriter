@@ -67,7 +67,7 @@ public partial class ProjectListViewModel : ViewModelBase
         // 打开项目设置向导(梗概+大纲)
         var setupDlg = new Views.ProjectSetupDialog(
             project.Id, project.Genre ?? "玄幻",
-            newProjDlg.StoryIdea, newProjDlg.StyleEnabled, newProjDlg.InterludeEnabled)
+            newProjDlg.StoryIdea)
         { Owner = owner };
         setupDlg.ShowDialog();
 

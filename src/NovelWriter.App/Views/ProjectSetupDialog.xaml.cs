@@ -21,8 +21,7 @@ public partial class ProjectSetupDialog : Window
     private readonly CancellationTokenSource _cts = new();
     public bool SetupCompleted { get; private set; }
 
-    public ProjectSetupDialog(ProjectId projectId, string genre, string storyIdea,
-        bool styleEnabled = false, bool interludeEnabled = false)
+    public ProjectSetupDialog(ProjectId projectId, string genre, string storyIdea)
     {
         _projectId = projectId;
         _genre = genre;

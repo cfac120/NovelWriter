@@ -12,8 +12,6 @@ public partial class NewProjectDialog : Window
     public Project? CreatedProject { get; private set; }
     public string StoryIdea => IdeaBox.Text;
     public string Genre => ((ComboBoxItem)GenreCombo.SelectedItem).Content.ToString()!;
-    public bool StyleEnabled => EnableStyleCheck.IsChecked == true;
-    public bool InterludeEnabled => EnableInterludeCheck.IsChecked == true;
 
     public NewProjectDialog()
     {
