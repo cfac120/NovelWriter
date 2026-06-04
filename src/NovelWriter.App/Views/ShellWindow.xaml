@@ -42,17 +42,12 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
 
-                        <!-- 项目名 -->
-                        <Border Background="#1A1A2E" Padding="10,8" Margin="0,0,0,4">
-                            <TextBlock x:Name="ProjectTitle" Text="NovelWriter" FontSize="14"
-                                       FontWeight="Bold" Foreground="#89B4FA"/>
-                        </Border>
-
-                        <!-- 小说内容 -->
-                        <Expander x:Name="ContentExpander" Header="小说内容" IsExpanded="True" Margin="4,4,4,0">
+                        <!-- 小说内容(标题动态替换) -->
+                        <Expander x:Name="ContentExpander" Header="NovelWriter" IsExpanded="True" Margin="4,4,4,0">
                             <Expander.HeaderTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="小说内容" FontSize="12" FontWeight="SemiBold" Foreground="#89B4FA"/>
+                                    <TextBlock x:Name="ContentHeader" Text="NovelWriter" FontSize="13"
+                                               FontWeight="SemiBold" Foreground="#89B4FA"/>
                                 </DataTemplate>
                             </Expander.HeaderTemplate>
                             <StackPanel Margin="8,4">
@@ -185,6 +180,12 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
+                            <!-- 开始创作按钮(新建/打开后显示) -->
+                            <Button x:Name="StartAiBtn" Content="▶ 开始辅助创作" Height="32" Margin="0,8,0,0"
+                                    Foreground="#1E1E2E" Background="#89B4FA" BorderThickness="0" FontSize="11"
+                                    Click="StartAiBtn_Click" Visibility="Collapsed"/>
+
+                            <!-- 阶段确认/重写按钮(创作中显示) -->
                             <StackPanel x:Name="StageActions" Orientation="Horizontal" Margin="0,8,0,0" Visibility="Collapsed">
                                 <Button x:Name="ConfirmBtn" Content="✓ 确认" Width="80" Height="28"
                                         Foreground="#1E1E2E" Background="#A6E3A1" BorderThickness="0" FontSize="11"
@@ -193,6 +194,9 @@
                                         Foreground="#1E1E2E" Background="#FAB387" BorderThickness="0" FontSize="11"
                                         Click="StageRewrite_Click"/>
                             </StackPanel>
+                            <!-- "浏览模式" 提示 -->
+                            <TextBlock x:Name="BrowseHint" Text="正在浏览项目内容..." Foreground="#6C7086"
+                                       FontSize="10" Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
                         </StackPanel>
                     </Border>
 

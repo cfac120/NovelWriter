@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
@@ -81,38 +82,103 @@ public partial class ShellWindow : Window
         SaveProjectMeta(meta);
         File.WriteAllText(Path.Combine(_projectDir, "idea.md"), dlg.StoryIdea);
 
-        ProjectTitle.Text = proj.Title;
-        Chat("系统", $"项目 {proj.Title} 已创建，开始 AI 辅助写作...");
+        SetProjectTitle(proj.Title);
+        Chat("系统", $"项目 {proj.Title} 已创建。");
         RefreshTree();
         WelcomePanel.Visibility = Visibility.Collapsed;
         await SaveProjectToDb(proj);
-        _ = StartAiPipelineAsync();
+
+        // 验证 LLM 状态，显示开始按钮
+        await ValidateLlmAndShowStart();
     }
 
     private void OpenProject_Click(object sender, RoutedEventArgs e)
     {
-        var dir = Microsoft.VisualBasic.Interaction.InputBox(
-            "输入项目目录路径:", "打开项目", ProjectsRoot, -1, -1);
-        if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir)) return;
-        OpenExistingProject(dir);
+        var dlg = new OpenProjectDialog(ProjectsRoot) { Owner = this };
+        if (dlg.ShowDialog() != true || dlg.SelectedPath == null) return;
+        OpenExistingProject(dlg.SelectedPath);
     }
 
-    private void OpenExistingProject(string dir)
+    private async void OpenExistingProject(string dir)
     {
         _projectDir = dir;
         var meta = LoadOrRecoverMeta();
         if (meta == null) return;
 
-        ProjectTitle.Text = meta.Title;
+        SetProjectTitle(meta.Title);
         _projectId = meta.Id;
         Chat("系统", $"已打开: {meta.Title} (阶段: {meta.Phase})");
         RefreshTree();
         WelcomePanel.Visibility = Visibility.Collapsed;
         LoadLlmConfig();
 
-        // 根据阶段恢复或继续流水线
-        if (meta.Phase != ProjectPhase.ChapterActive)
-            _ = ResumePipelineAsync(meta);
+        // 验证 LLM 状态，显示开始按钮
+        await ValidateLlmAndShowStart();
+    }
+
+    /// <summary>
+    /// 设置左栏标题为小说名称
+    /// </summary>
+    private void SetProjectTitle(string title)
+    {
+        ContentExpander.Header = title;
+    }
+
+    /// <summary>
+    /// 验证 LLM 可用性，然后显示"开始辅助创作"按钮。
+    /// 后台读取记忆，但不自动开始。
+    /// </summary>
+    private async Task ValidateLlmAndShowStart()
+    {
+        StartAiBtn.Visibility = Visibility.Collapsed;
+        StageActions.Visibility = Visibility.Collapsed;
+        BrowseHint.Visibility = Visibility.Visible;
+        BrowseHint.Text = "正在验证 LLM 连接...";
+
+        var key = ApiKeyBox.Text.Trim();
+        if (string.IsNullOrEmpty(key))
+        {
+            Chat("错误", "请先在右下角配置 LLM API Key");
+            BrowseHint.Text = "LLM 未配置 — 只能浏览项目内容。配置 API Key 后可开始辅助创作。";
+            return;
+        }
+
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+            var request = new HttpRequestMessage(HttpMethod.Get,
+                UriBox.Text.Trim().Replace("/chat/completions", "/models"));
+            request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", key);
+            var resp = await http.SendAsync(request);
+            var valid = resp.IsSuccessStatusCode;
+
+            if (valid)
+            {
+                BrowseHint.Text = "LLM 已连接。点击下方按钮开始辅助创作，或直接浏览项目内容。";
+                Chat("系统", "LLM 连接成功。后台已读取项目记忆。");
+                StartAiBtn.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                BrowseHint.Text = $"LLM 验证失败 ({resp.StatusCode}) — 只能浏览项目内容。检查 API 配置后重试。";
+                Chat("错误", $"API 验证失败: {resp.StatusCode}");
+            }
+        }
+        catch (Exception ex)
+        {
+            BrowseHint.Text = $"LLM 连接异常 — 只能浏览项目内容。{ex.Message}";
+            Chat("错误", $"API 连接失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 用户点击"开始辅助创作"
+    /// </summary>
+    private void StartAiBtn_Click(object sender, RoutedEventArgs e)
+    {
+        StartAiBtn.Visibility = Visibility.Collapsed;
+        BrowseHint.Visibility = Visibility.Collapsed;
+        _ = StartAiPipelineAsync();
     }
 
     /// <summary>
@@ -120,7 +186,8 @@ public partial class ShellWindow : Window
     /// </summary>
     private ProjectMeta? LoadOrRecoverMeta()
     {
-        var path = Path.Combine(_projectDir!, "project.json");
+        if (_projectDir == null) return null;
+        var path = Path.Combine(_projectDir, "project.json");
         if (File.Exists(path))
         {
             try
@@ -133,7 +200,7 @@ public partial class ShellWindow : Window
         }
 
         // === 恢复逻辑: 扫描目录推断项目状态 ===
-        var title = new DirectoryInfo(_projectDir!).Name;
+        var title = new DirectoryInfo(_projectDir).Name;
         var phase = ProjectPhase.TopicPicked;
         var hasSynopsis = File.Exists(Path.Combine(_projectDir, "synopsis.md"));
         var hasOutline = File.Exists(Path.Combine(_projectDir, "outline.md"));
@@ -157,30 +224,6 @@ public partial class ShellWindow : Window
     /// 根据阶段恢复流水线。topic/synopsis阶段从头开始；
     /// outline/chapterActive阶段从当前进度继续。
     /// </summary>
-    private async Task ResumePipelineAsync(ProjectMeta meta)
-    {
-        if (meta.Phase <= ProjectPhase.SynopsisDone)
-        {
-            // 从梗概阶段开始（如果已有梗概文件则跳过）
-            Chat("系统", "继续从梗概阶段...");
-            _ = StartAiPipelineAsync();
-        }
-        else if (meta.Phase == ProjectPhase.OutlineDone)
-        {
-            // 大纲已完成，开始写作
-            SetStage(1, false); // 大纲完成
-            Chat("系统", "大纲已完成，准备开始写作。");
-            ShowActions(true);
-        }
-        else if (meta.Phase == ProjectPhase.ChapterActive)
-        {
-            // 直接进入写作
-            SetStage(1, false);
-            SetStage(2, true);
-            Chat("系统", $"继续写作 (第{meta.CurrentChapter + 1}章)...");
-        }
-    }
-
     // === project.json 读写 ===
     private void SaveProjectMeta(ProjectMeta meta)
     {
@@ -322,7 +365,8 @@ public partial class ShellWindow : Window
                 ? await File.ReadAllTextAsync(Path.Combine(_projectDir, "idea.md"), ct) : "";
 
             var gen = NovelWriterApp.Services.GetRequiredService<NovelWriter.Engine.Pipeline.SynopsisGenerator>();
-            var synopsis = await gen.GenerateAsync(ProjectTitle.Text, "", "30万", ct);
+            var meta = LoadOrRecoverMeta();
+            var synopsis = await gen.GenerateAsync(meta?.Title ?? "未命名", "", "30万", ct);
 
             if (synopsis.Success)
             {
