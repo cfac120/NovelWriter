@@ -439,9 +439,11 @@ public class PipelineOrchestrator
         Log.Information("[Stage02] Generating synopsis for genre={Genre}", topic.Genre);
 
         var result = await _synopsisGenerator.GenerateAsync(
-            topic.Genre,
-            topic.Tags ?? "",
-            topic.TargetWordCount ?? "30万",
+            title: "",
+            genre: topic.Genre,
+            tags: topic.Tags ?? "",
+            storyIdea: "",
+            targetWordCount: topic.TargetWordCount ?? "30万",
             ct);
 
         if (!result.Success)
@@ -492,6 +494,7 @@ public class PipelineOrchestrator
 
         var result = await _outlineGenerator.GenerateAsync(
             _context.ProjectId,
+            topic.Genre,
             synopsis,
             topic.CoreConflict ?? "",
             topic.MainCharacter?.Name ?? "主角",

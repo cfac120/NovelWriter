@@ -64,7 +64,13 @@ public partial class ProjectSetupDialog : Window
             var gen = scope.ServiceProvider.GetRequiredService<SynopsisGenerator>();
 
             var genreInput = $"{genre}。{_storyIdea}";
-            _synopsisResult = await gen.GenerateAsync(genreInput, tags, words, _cts.Token);
+            _synopsisResult = await gen.GenerateAsync(
+                title: "",
+                genre: genre,
+                tags: tags,
+                storyIdea: _storyIdea,
+                targetWordCount: words,
+                ct: _cts.Token);
 
             if (_synopsisResult.Success)
             {
@@ -111,12 +117,13 @@ public partial class ProjectSetupDialog : Window
 
             var result = await gen.GenerateAsync(
                 _projectId,
-                SynopsisBox.Text,
-                _synopsisResult?.CoreConflict ?? "",
-                _synopsisResult?.MainCharacterName ?? "主角",
-                TagsBox.Text,
+                genre: _genre,
+                synopsis: SynopsisBox.Text,
+                coreConflict: _synopsisResult?.CoreConflict ?? "",
+                mainCharacter: _synopsisResult?.MainCharacterName ?? "主角",
+                tags: TagsBox.Text,
                 totalChapters: 10,
-                _cts.Token);
+                ct: _cts.Token);
 
             if (result.Success)
             {

@@ -16,8 +16,8 @@ public class QwenAdapter : LlmAdapterBase
     public override int MaxContextTokens => _modelName == "qwen-max" ? 32_768 : 131_072;
     public override int RecommendedOutputTokens => 8_192;
 
-    public QwenAdapter(HttpClient httpClient, string apiKey, string modelName = "qwen-plus")
-        : base(httpClient, apiKey, "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions")
+    public QwenAdapter(HttpClient httpClient, LlmRuntimeConfig config, string modelName = "qwen-plus")
+        : base(httpClient, config)
     {
         _modelName = modelName;
     }
@@ -44,10 +44,8 @@ public class QwenAdapter : LlmAdapterBase
         var node = JsonNode.Parse(jsonResponse)
             ?? throw new InvalidOperationException("Failed to parse Qwen response");
 
-        var content = node["choices"]?[0]?["message"]?["content"]?.ToString()
+        return node["choices"]?[0]?["message"]?["content"]?.ToString()
             ?? throw new InvalidOperationException("Qwen response missing content");
-
-        return content;
     }
 
     protected override string? ParseStreamChunk(string data)
@@ -55,12 +53,8 @@ public class QwenAdapter : LlmAdapterBase
         try
         {
             var node = JsonNode.Parse(data);
-            var delta = node?["choices"]?[0]?["delta"]?["content"]?.ToString();
-            return delta;
+            return node?["choices"]?[0]?["delta"]?["content"]?.ToString();
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 }

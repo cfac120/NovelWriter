@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NovelWriter.Core.Interfaces;
+using NovelWriter.Engine.Llm;
 using NovelWriter.Engine.Pipeline;
 using NovelWriter.Storage;
 using NovelWriter.Storage.Repositories;
@@ -15,6 +16,16 @@ namespace NovelWriter.App;
 public partial class NovelWriterApp : Application
 {
     public static ServiceProvider Services { get; private set; } = null!;
+
+    /// <summary>
+    /// 全局共享的 LLM 运行时配置。ShellWindow 在保存配置时调用
+    /// <c>LlmConfig.Update(...)</c>，所有已构造的 ILlmAdapter 立即生效。
+    /// </summary>
+    public static LlmRuntimeConfig LlmConfig { get; } = new(
+        apiKey: Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "",
+        model:  Environment.GetEnvironmentVariable("LLM_MODEL") ?? "",
+        endpoint: Environment.GetEnvironmentVariable("LLM_BASE_URL") ?? ""
+    );
 
     public NovelWriterApp()
     {
@@ -43,13 +54,15 @@ public partial class NovelWriterApp : Application
             services.AddScoped<IStyleLibraryRepository, StyleLibraryRepository>();
             services.AddScoped<IInterludeRepository, InterludeRepository>();
 
+            // 共享 LLM 运行时配置
+            services.AddSingleton(LlmConfig);
+
+            // ILlmAdapter 单例：所有生成器、Agent 共享同一个适配器实例。
+            // 适配器持有 LlmRuntimeConfig 引用，配置更新时无需重建。
             services.AddSingleton<ILlmAdapter>(_ =>
             {
-                var key = Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "";
-                var model = Environment.GetEnvironmentVariable("LLM_MODEL") ?? "deepseek-chat";
-                var url = Environment.GetEnvironmentVariable("LLM_BASE_URL") ?? "";
                 var http = new HttpClient { Timeout = TimeSpan.FromMinutes(10) };
-                return new NovelWriter.Engine.Llm.GenericOpenAiAdapter(http, key, model, url);
+                return new GenericOpenAiAdapter(http, LlmConfig);
             });
 
             services.AddScoped<SynopsisGenerator>();

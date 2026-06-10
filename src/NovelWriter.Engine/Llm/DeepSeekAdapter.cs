@@ -14,8 +14,8 @@ public class DeepSeekAdapter : LlmAdapterBase
     public override int MaxContextTokens => 1_000_000;
     public override int RecommendedOutputTokens => 8_192;
 
-    public DeepSeekAdapter(HttpClient httpClient, string apiKey)
-        : base(httpClient, apiKey, "https://api.deepseek.com/v1/chat/completions") { }
+    public DeepSeekAdapter(HttpClient httpClient, LlmRuntimeConfig config)
+        : base(httpClient, config) { }
 
     protected override object BuildRequest(string? systemPrompt, string userMessage, bool stream = false)
     {
@@ -29,7 +29,7 @@ public class DeepSeekAdapter : LlmAdapterBase
             model = "deepseek-v4-pro",
             messages,
             stream,
-            max_tokens = RecommendedOutputTokens,   // 始终设置保护上限 8192
+            max_tokens = RecommendedOutputTokens,
             temperature = stream ? 0.85 : 0.3
         };
     }
@@ -39,10 +39,8 @@ public class DeepSeekAdapter : LlmAdapterBase
         var node = JsonNode.Parse(jsonResponse)
             ?? throw new InvalidOperationException("Failed to parse DeepSeek response");
 
-        var content = node["choices"]?[0]?["message"]?["content"]?.ToString()
+        return node["choices"]?[0]?["message"]?["content"]?.ToString()
             ?? throw new InvalidOperationException("DeepSeek response missing content");
-
-        return content;
     }
 
     protected override string? ParseStreamChunk(string data)
@@ -50,12 +48,8 @@ public class DeepSeekAdapter : LlmAdapterBase
         try
         {
             var node = JsonNode.Parse(data);
-            var delta = node?["choices"]?[0]?["delta"]?["content"]?.ToString();
-            return delta;
+            return node?["choices"]?[0]?["delta"]?["content"]?.ToString();
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 }

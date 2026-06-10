@@ -22,8 +22,8 @@ public class KimiAdapter : LlmAdapterBase
     };
     public override int RecommendedOutputTokens => 4_096;
 
-    public KimiAdapter(HttpClient httpClient, string apiKey, string modelName = "moonshot-v1-128k")
-        : base(httpClient, apiKey, "https://api.moonshot.cn/v1/chat/completions")
+    public KimiAdapter(HttpClient httpClient, LlmRuntimeConfig config, string modelName = "moonshot-v1-128k")
+        : base(httpClient, config)
     {
         _modelName = modelName;
     }
@@ -49,10 +49,8 @@ public class KimiAdapter : LlmAdapterBase
         var node = JsonNode.Parse(jsonResponse)
             ?? throw new InvalidOperationException("Failed to parse Kimi response");
 
-        var content = node["choices"]?[0]?["message"]?["content"]?.ToString()
+        return node["choices"]?[0]?["message"]?["content"]?.ToString()
             ?? throw new InvalidOperationException("Kimi response missing content");
-
-        return content;
     }
 
     protected override string? ParseStreamChunk(string data)
@@ -60,12 +58,8 @@ public class KimiAdapter : LlmAdapterBase
         try
         {
             var node = JsonNode.Parse(data);
-            var delta = node?["choices"]?[0]?["delta"]?["content"]?.ToString();
-            return delta;
+            return node?["choices"]?[0]?["delta"]?["content"]?.ToString();
         }
-        catch
-        {
-            return null;
-        }
+        catch { return null; }
     }
 }

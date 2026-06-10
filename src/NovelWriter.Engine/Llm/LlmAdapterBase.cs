@@ -17,8 +17,7 @@ namespace NovelWriter.Engine.Llm;
 public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
 {
     protected readonly HttpClient HttpClient;
-    protected readonly string ApiKey;
-    protected readonly string ChatEndpoint;
+    protected readonly LlmRuntimeConfig Config;
     protected readonly ResiliencePipeline<HttpResponseMessage> ResiliencePipeline;
 
     // 速率限制：最少间隔2秒，防止快速连续调用耗尽配额
@@ -26,11 +25,15 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
     private static DateTime _lastCallTime = DateTime.MinValue;
     private static readonly TimeSpan MinCallInterval = TimeSpan.FromSeconds(2);
 
-    protected LlmAdapterBase(HttpClient httpClient, string apiKey, string chatEndpoint)
+    /// <summary>
+    /// 构造时 ApiKey 可以为空（启动时未配置场景）。请求时再校验。
+    /// 所有运行时配置通过 <see cref="LlmRuntimeConfig"/> 引用，UI 保存配置时
+    /// 调用 <c>Config.Update(key, model, url)</c>，下次请求立即生效。
+    /// </summary>
+    protected LlmAdapterBase(HttpClient httpClient, LlmRuntimeConfig config)
     {
         HttpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        ApiKey = !string.IsNullOrWhiteSpace(apiKey) ? apiKey : throw new ArgumentException("API Key cannot be empty", nameof(apiKey));
-        ChatEndpoint = chatEndpoint ?? throw new ArgumentNullException(nameof(chatEndpoint));
+        Config = config ?? throw new ArgumentNullException(nameof(config));
 
         ResiliencePipeline = new ResiliencePipelineBuilder<HttpResponseMessage>()
             .AddRetry(new RetryStrategyOptions<HttpResponseMessage>
@@ -45,7 +48,7 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
                 OnRetry = args =>
                 {
                     Log.Warning("LLM retry {Attempt}/3 after {Delay}ms for {Model}. Reason: {Reason}",
-                        args.AttemptNumber + 1, args.RetryDelay.TotalMilliseconds, ModelName,
+                        args.AttemptNumber + 1, args.RetryDelay.TotalMilliseconds, Config.Model,
                         args.Outcome.Exception?.Message ?? args.Outcome.Result?.StatusCode.ToString());
                     return default;
                 }
@@ -53,6 +56,13 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
             .AddTimeout(TimeSpan.FromMinutes(5))
             .Build();
     }
+
+    /// <summary>
+    /// 子类可覆写：当前请求使用的模型名（默认从 Config 读）
+    /// </summary>
+    protected virtual string ActiveModel => Config.Model;
+    protected virtual string ActiveApiKey => Config.ApiKey;
+    protected virtual string ActiveEndpoint => Config.Endpoint;
 
     /// <summary>
     /// 守卫：确保两次调用之间有最小间隔，防止 token 滥用。
@@ -89,8 +99,14 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
     public async Task<string> ChatAsync(string systemPrompt, string userMessage, CancellationToken ct = default)
     {
         await WaitRateGateAsync(ct);
+        var apiKey = ActiveApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("请先在左下角 ▼ 配置 LLM API Key");
+        var endpoint = ActiveEndpoint;
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new InvalidOperationException("请先在左下角 ▼ 配置 LLM API 端点 URL");
         var requestBody = BuildRequest(systemPrompt, userMessage, stream: false);
-        var response = await SendRequestAsync(requestBody, ct);
+        var response = await SendRequestAsync(requestBody, apiKey, endpoint, ct);
         return ParseResponse(response);
     }
 
@@ -125,6 +141,13 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
     {
         await WaitRateGateAsync(ct);
 
+        var apiKey = ActiveApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+            throw new InvalidOperationException("请先在左下角 ▼ 配置 LLM API Key");
+        var endpoint = ActiveEndpoint;
+        if (string.IsNullOrWhiteSpace(endpoint))
+            throw new InvalidOperationException("请先在左下角 ▼ 配置 LLM API 端点 URL");
+
         var requestBody = BuildRequest(systemPrompt, userMessage, stream: true);
         var json = JsonSerializer.Serialize(requestBody);
 
@@ -134,8 +157,8 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
             HttpResponseMessage response;
             try
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint);
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 using var timeoutCts = new CancellationTokenSource(TimeSpan.FromMinutes(5));
@@ -187,7 +210,7 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
 
     // === 内部方法 ===
 
-    private async Task<string> SendRequestAsync(object requestBody, CancellationToken ct)
+    private async Task<string> SendRequestAsync(object requestBody, string apiKey, string endpoint, CancellationToken ct)
     {
         var json = JsonSerializer.Serialize(requestBody);
         var startTime = DateTime.UtcNow;
@@ -196,8 +219,8 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
         {
             var outcome = await ResiliencePipeline.ExecuteAsync(async token =>
             {
-                using var request = new HttpRequestMessage(HttpMethod.Post, ChatEndpoint);
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", ApiKey);
+                using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
                 request.Content = new StringContent(json, Encoding.UTF8, "application/json");
 
                 return await HttpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token);
@@ -207,14 +230,14 @@ public abstract class LlmAdapterBase : ILlmAdapter, IDisposable
             var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
             Log.Information("LLM call completed: Model={Model}, Duration={Duration}ms, Status={Status}",
-                ModelName, elapsed, outcome.StatusCode);
+                Config.Model, elapsed, outcome.StatusCode);
 
             return responseBody;
         }
         catch (Exception ex) when (ex is not LlmUnavailableException)
         {
             var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
-            Log.Error(ex, "LLM call failed after retries: Model={Model}, Duration={Duration}ms", ModelName, elapsed);
+            Log.Error(ex, "LLM call failed after retries: Model={Model}, Duration={Duration}ms", Config.Model, elapsed);
             throw;
         }
     }

@@ -28,7 +28,6 @@ public partial class ShellWindow : Window
     private string _currentUri = "";
     private readonly ObservableCollection<StageItem> _stages = [];
     private readonly ObservableCollection<ChatMsg> _chatMsgs = [];
-    private int _activeStage;
     private CancellationTokenSource? _aiCts;
 
     private static readonly string ProjectsRoot =
@@ -74,9 +73,21 @@ public partial class ShellWindow : Window
         }
 
         _currentApiKey ??= Environment.GetEnvironmentVariable("LLM_API_KEY") ?? "";
+        _currentModel ??= Environment.GetEnvironmentVariable("LLM_MODEL") ?? "";
+        _currentUri ??= Environment.GetEnvironmentVariable("LLM_BASE_URL") ?? "";
+
+        // 同步到 UI
         ApiKeyBox.Text = _currentApiKey;
         ModelBox.Text = _currentModel ?? "";
         UriBox.Text = _currentUri;
+
+        // 同步到全局运行时配置 + 底部状态栏
+        NovelWriterApp.LlmConfig.Update(
+            apiKey: _currentApiKey,
+            model: _currentModel,
+            endpoint: _currentUri);
+
+        LlmNameText.Text = string.IsNullOrEmpty(_currentModel) ? "未配置 LLM" : _currentModel;
     }
 
     // === 项目操作 ===
@@ -134,7 +145,8 @@ public partial class ShellWindow : Window
         WelcomePanel.Visibility = Visibility.Collapsed;
         LoadLlmConfig();
 
-        // 验证 LLM 状态，显示开始按钮
+        // 自动验证 LLM：已配置 → 验证后显示开始按钮；未配置 → 提示设置
+        // 不需要用户手动点击"保存并连接"
         await ValidateLlmAndShowStart();
     }
 
@@ -154,8 +166,17 @@ public partial class ShellWindow : Window
         StartAiBtn.Visibility = Visibility.Collapsed;
         StageActions.Visibility = Visibility.Collapsed;
 
-        // 优先使用已保存的 key，再用 UI 输入框中的值
-        var key = _currentApiKey ?? ApiKeyBox.Text.Trim();
+        // 优先使用全局 LlmConfig（已由 LoadLlmConfig 同步），再回退到 UI 输入框
+        var key = !string.IsNullOrEmpty(NovelWriterApp.LlmConfig.ApiKey)
+            ? NovelWriterApp.LlmConfig.ApiKey
+            : ApiKeyBox.Text.Trim();
+        var model = !string.IsNullOrEmpty(NovelWriterApp.LlmConfig.Model)
+            ? NovelWriterApp.LlmConfig.Model
+            : ModelBox.Text.Trim();
+        var uri = !string.IsNullOrEmpty(NovelWriterApp.LlmConfig.Endpoint)
+            ? NovelWriterApp.LlmConfig.Endpoint
+            : UriBox.Text.Trim();
+
         if (string.IsNullOrEmpty(key))
         {
             ProgressText.Text = "LLM 未配置 — 请点击左下角 ▼ 设置";
@@ -166,12 +187,12 @@ public partial class ShellWindow : Window
         {
             ShowThinking("验证 LLM 连接...");
             using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
-            using var request = new HttpRequestMessage(HttpMethod.Post, _currentUri);
+            using var request = new HttpRequestMessage(HttpMethod.Post, uri);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
             var body = new
             {
-                model = _currentModel ?? "",
+                model = model ?? "",
                 messages = new[] { new { role = "user", content = "hi" } },
                 max_tokens = 1
             };
@@ -185,7 +206,7 @@ public partial class ShellWindow : Window
             {
                 StageActions.Visibility = Visibility.Visible;
                 StartAiBtn.Visibility = Visibility.Visible;
-                ProgressText.Text = string.IsNullOrEmpty(_currentModel) ? "✓ 已连接" : $"✓ 已连接 {_currentModel}";
+                ProgressText.Text = string.IsNullOrEmpty(model) ? "✓ 已连接" : $"✓ 已连接 {model}";
             }
             else
             {
@@ -274,6 +295,15 @@ public partial class ShellWindow : Window
     {
         if (_projectDir == null) return;
         ChapterTree.Items.Clear();
+
+        // 填充各类目的子文件列表
+        IdeaFileList.ItemsSource     = BuildFileList("idea.md");
+        SynopsisFileList.ItemsSource = BuildFileList("synopsis.md");
+        OutlineFileList.ItemsSource  = BuildFileList("outline.md");
+        L3FileList.ItemsSource       = BuildFileList(Path.Combine("memory", "l3_memory.md"));
+        L2FileList.ItemsSource       = BuildFileList(Path.Combine("memory", "l2_memory.md"));
+        L1FileList.ItemsSource       = BuildFileList(Path.Combine("memory", "l1_memory.md"));
+
         var chaptersDir = Path.Combine(_projectDir, "chapters");
         if (Directory.Exists(chaptersDir))
         {
@@ -283,31 +313,36 @@ public partial class ShellWindow : Window
                 ChapterTree.Items.Add(new TreeViewItem { Header = name, Tag = f, Foreground = new SolidColorBrush(Color.FromRgb(0xCD, 0xD6, 0xF4)) });
             }
         }
-        if (ChapterTree.Items.Count == 0)
-            ChapterTree.Items.Add(new TreeViewItem { Header = "暂无章节", Foreground = new SolidColorBrush(Color.FromRgb(0x6C, 0x70, 0x86)) });
 
         // 刷新风格/插曲列表
         _ = RefreshStyleListAsync();
         _ = RefreshInterludeListAsync();
     }
 
-    // === 标签页管理 ===
-    private void OpenFileNode(object sender, MouseButtonEventArgs e)
+    /// <summary>
+    /// 构造指定文件路径的子项列表。文件不存在时不列出（避免空 Expander 看起来别扭）。
+    /// </summary>
+    private System.Collections.IList BuildFileList(string relativeOrSimpleName)
     {
-        if (_projectDir == null || sender is not FrameworkElement el || el.Tag is not string tag) return;
-        var file = tag switch
-        {
-            "idea" => Path.Combine(_projectDir, "idea.md"),
-            "synopsis" => Path.Combine(_projectDir, "synopsis.md"),
-            "outline" => Path.Combine(_projectDir, "outline.md"),
-            "characters" => Path.Combine(_projectDir, "memory", "characters.md"),
-            "world" => Path.Combine(_projectDir, "memory", "world.md"),
-            _ => null
-        };
-        if (file == null) return;
-        if (!File.Exists(file)) File.WriteAllText(file, $"# {tag}\n\n");
-        OpenTab(Path.GetFileName(file), file);
+        if (_projectDir == null) return Array.Empty<FileItem>();
+        var fullPath = Path.IsPathRooted(relativeOrSimpleName)
+            ? relativeOrSimpleName
+            : Path.Combine(_projectDir, relativeOrSimpleName);
+        if (!File.Exists(fullPath)) return Array.Empty<FileItem>();
+        return new List<FileItem> { new FileItem { FullPath = fullPath, DisplayName = Path.GetFileName(fullPath) } };
     }
+
+    private void FileItem_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is not ItemsControl ic) return;
+        // 找到点击的 TextBlock（事件冒泡）
+        if (e.OriginalSource is TextBlock tb && tb.DataContext is FileItem fi)
+        {
+            OpenTab(fi.DisplayName, fi.FullPath);
+        }
+    }
+
+    // === 标签页管理 ===
 
     private void ChapterTreeSelected(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
@@ -373,84 +408,165 @@ public partial class ShellWindow : Window
     // === AI 流水线 ===
     private const int MaxPipelineSteps = 100;     // 硬性上限，防止意外无限调用
 
+    // 用户选择状态：1=确认（持久化并进入下一阶段），2=重写（重新生成当前阶段）
+    private TaskCompletionSource<int>? _confirmTcs;
+    private bool _isRunning;       // 流水线是否在执行（控制停止/开始按钮可见性）
+    private int _pipelineSteps;    // 流水线当前已执行步数（防止无限循环）
+    private NovelWriter.Engine.Pipeline.SynopsisResult? _pendingSynopsis;
+    private NovelWriter.Engine.Pipeline.OutlineResult? _pendingOutline;
+
     private async Task StartAiPipelineAsync()
     {
         if (_projectDir == null) return;
+        if (_isRunning) return;   // 防止重入
+        _isRunning = true;
+
         _aiCts?.Cancel();
         _aiCts = new CancellationTokenSource();
         var ct = _aiCts.Token;
-        var stepCount = 0;
+        _pipelineSteps = 0;
+
+        // 切到运行态：隐藏开始按钮，显示停止按钮
+        StartAiBtn.Visibility = Visibility.Collapsed;
+        StopBtn.Visibility = Visibility.Visible;
+        ShowActions(false);
 
         try
         {
-            // Stage 1: 梗概
-            GuardStep(ref stepCount);
-            SetStage(0, true);
-            ShowActions(false);
-            ShowThinking("正在生成故事梗概...");
-
+            // === 准备：读取题材/故事创意/当前阶段 ===
+            var meta = LoadOrRecoverMeta();
             var idea = File.Exists(Path.Combine(_projectDir, "idea.md"))
                 ? await File.ReadAllTextAsync(Path.Combine(_projectDir, "idea.md"), ct) : "";
+            var genre = meta?.Genre ?? "";
+            var projGuid = string.IsNullOrEmpty(_projectId)
+                ? Guid.NewGuid()
+                : Guid.Parse(_projectId + "00000000");
 
-            var gen = NovelWriterApp.Services.GetRequiredService<NovelWriter.Engine.Pipeline.SynopsisGenerator>();
-            var meta = LoadOrRecoverMeta();
-            var synopsis = await gen.GenerateAsync(meta?.Title ?? "未命名", "", "30万", ct);
-
-            HideThinking();
-            if (synopsis.Success)
-            {
-                var synopsisText = $"# {synopsis.Title}\n\n**核心冲突:** {synopsis.CoreConflict}\n**主角:** {synopsis.MainCharacterName}\n\n{synopsis.Synopsis}";
-                await File.WriteAllTextAsync(Path.Combine(_projectDir, "synopsis.md"), synopsisText, ct);
-                OpenTab("梗概", Path.Combine(_projectDir, "synopsis.md"));
-            }
-            SetStage(0, false);
-            ShowActions(true);
-            Chat("AI", $"梗概生成完成。请确认或重写。\n书名: {synopsis.Title}\n{synopsis.Synopsis.Truncate(150)}");
-
-            // Stage 2: 大纲
-            await WaitConfirmOrRetryAsync(0, ct);
-            GuardStep(ref stepCount);
-            UpdatePhase(ProjectPhase.SynopsisDone);
-            SetStage(1, true);
-            ShowActions(false);
-            ShowThinking("正在生成分章大纲（含 L3 记忆初始化）...");
-
+            var synopsisGen = NovelWriterApp.Services.GetRequiredService<NovelWriter.Engine.Pipeline.SynopsisGenerator>();
             var outlineGen = NovelWriterApp.Services.GetRequiredService<NovelWriter.Engine.Pipeline.OutlineGenerator>();
-            var synopsisText2 = File.Exists(Path.Combine(_projectDir, "synopsis.md"))
-                ? await File.ReadAllTextAsync(Path.Combine(_projectDir, "synopsis.md"), ct) : "";
-            var progId = _projectId;
-            var projGuid = string.IsNullOrEmpty(progId) ? Guid.NewGuid() : Guid.Parse(progId + "00000000");
-            var outline = await outlineGen.GenerateAsync(new ProjectId(projGuid), synopsisText2, "", synopsis.MainCharacterName, "", 10, ct);
 
-            HideThinking();
-            if (outline.Success)
+            // 根据项目当前阶段决定从哪个 Stage 启动 —— 避免对已完成的阶段重新生成
+            var startStage = meta?.Phase switch
             {
-                var sb = new System.Text.StringBuilder();
-                sb.AppendLine("# 分章大纲\n");
-                foreach (var o in outline.Outlines)
-                {
-                    sb.AppendLine($"## 第{o.ChapterNumber}章 {o.SceneDescription}");
-                    sb.AppendLine(o.KeyEvents ?? "");
-                    sb.AppendLine();
+                ProjectPhase.TopicPicked   => 0,
+                ProjectPhase.SynopsisDone  => 1,
+                ProjectPhase.OutlineDone   => 2,
+                ProjectPhase.ChapterActive => 2,
+                _ => 0
+            };
 
-                    var chPath = Path.Combine(_projectDir, "chapters", $"第{o.ChapterNumber:00}章.md");
-                    if (!File.Exists(chPath))
-                        await File.WriteAllTextAsync(chPath, $"# 第{o.ChapterNumber}章\n\n{o.SceneDescription}\n\n(待AI生成)\n", ct);
-                }
-                await File.WriteAllTextAsync(Path.Combine(_projectDir, "outline.md"), sb.ToString(), ct);
-                RefreshTree();
+            // 把之前已完成阶段的 Stage 状态标记为 ✓（不重跑）
+            for (int i = 0; i < startStage && i < _stages.Count; i++)
+            {
+                _stages[i].Status = "✓";
+                _stages[i].Color = "#A6E3A1";
             }
-            SetStage(1, false);
-            ShowActions(true);
-            Chat("AI", $"大纲生成完成 ({outline.Outlines.Count}章)。请确认或重写。");
 
-            // Stage 3+：逐章写作
-            await WaitConfirmOrRetryAsync(1, ct);
-            GuardStep(ref stepCount);
-            UpdatePhase(ProjectPhase.OutlineDone);
+            // ============= Stage 1: 梗概（仅 TopicPicked 时执行） =============
+            string synopsisText = "";
+            if (startStage <= 0 && !ct.IsCancellationRequested)
+            {
+                await RunStageWithRewriteAsync(
+                    stageIndex: 0,
+                    generatingText: "正在生成故事梗概...",
+                    previewTitle: "梗概（待确认 — 点 ✓ 确认 或 ↻ 重写）",
+                    onGeneratingAsync: async () =>
+                    {
+                        var r = await synopsisGen.GenerateAsync(
+                            title: meta?.Title ?? "未命名",
+                            genre: genre,
+                            tags: "",
+                            storyIdea: idea,
+                            targetWordCount: "30万",
+                            ct: ct);
+                        if (!r.Success) return (false, r.Error ?? "未知错误", "");
+                        _pendingSynopsis = r;
+                        var text =
+                            $"# {r.Title}\n\n" +
+                            $"**核心冲突:** {r.CoreConflict}\n" +
+                            $"**主角:** {r.MainCharacterName}\n\n" +
+                            $"{r.Synopsis}";
+                        return (true, null, text);
+                    },
+                    onConfirmed: async (finalText) =>
+                    {
+                        synopsisText = finalText;
+                        await File.WriteAllTextAsync(Path.Combine(_projectDir, "synopsis.md"), finalText, ct);
+                        OpenTab("梗概", Path.Combine(_projectDir, "synopsis.md"));
+                        UpdatePhase(ProjectPhase.SynopsisDone);
+                        Chat("系统", "✓ 梗概已保存。下一步：生成大纲。");
+                    },
+                    ct);
+            }
+
+            if (ct.IsCancellationRequested) return;
+
+            // ============= Stage 2: 大纲（仅未完成大纲时执行） =============
+            if (startStage <= 1 && !ct.IsCancellationRequested)
+            {
+                // 如果从 Stage 1 推进过来，synopsisText 已被填充；
+                // 如果从已有 synopsis 直接跳到 Stage 2，从文件加载
+                if (string.IsNullOrEmpty(synopsisText))
+                {
+                    var sp = Path.Combine(_projectDir, "synopsis.md");
+                    if (File.Exists(sp))
+                        synopsisText = await File.ReadAllTextAsync(sp, ct);
+
+                    // 也尝试从已存在的 synopsis 解析 _pendingSynopsis（用于大纲 prompt）
+                    if (_pendingSynopsis == null)
+                    {
+                        _pendingSynopsis = ParseSynopsisFromFile(synopsisText);
+                    }
+                }
+
+                await RunStageWithRewriteAsync(
+                    stageIndex: 1,
+                    generatingText: "正在生成分章大纲...",
+                    previewTitle: "大纲（待确认 — 点 ✓ 确认 或 ↻ 重写）",
+                    onGeneratingAsync: async () =>
+                    {
+                        var r = await outlineGen.GenerateAsync(
+                            new ProjectId(projGuid),
+                            genre: genre,
+                            synopsis: synopsisText,
+                            coreConflict: _pendingSynopsis?.CoreConflict ?? "",
+                            mainCharacter: _pendingSynopsis?.MainCharacterName ?? "",
+                            tags: "",
+                            totalChapters: 10,
+                            ct);
+                        if (!r.Success || r.Outlines.Count == 0)
+                            return (false, r.Error ?? "大纲为空", "");
+                        _pendingOutline = r;
+                        return (true, null, BuildOutlinePreview(r));
+                    },
+                    onConfirmed: async (finalText) =>
+                    {
+                        await File.WriteAllTextAsync(Path.Combine(_projectDir, "outline.md"), finalText, ct);
+                        if (_pendingOutline != null)
+                        {
+                            foreach (var o in _pendingOutline.Outlines)
+                            {
+                                var chPath = Path.Combine(_projectDir, "chapters", $"第{o.ChapterNumber:00}章.md");
+                                if (!File.Exists(chPath))
+                                    await File.WriteAllTextAsync(chPath,
+                                        $"# 第{o.ChapterNumber}章 {o.SceneDescription}\n\n{o.KeyEvents ?? ""}\n\n(待AI生成)\n", ct);
+                            }
+                        }
+                        UpdatePhase(ProjectPhase.OutlineDone);
+                        RefreshTree();
+                        Chat("系统", $"✓ 大纲已保存 ({_pendingOutline?.Outlines.Count ?? 0}章)。下一步：开始写作。");
+                    },
+                    ct);
+            }
+
+            if (ct.IsCancellationRequested) return;
+
+            // ============= Stage 3+：后续阶段（占位） =============
+            UpdatePhase(ProjectPhase.ChapterActive);
             for (int i = 2; i < _stages.Count; i++)
             {
-                GuardStep(ref stepCount);
+                if (ct.IsCancellationRequested) break;
+                GuardStep();
                 SetStage(i, true);
                 ShowActions(false);
                 ShowThinking($"{_stages[i].Name} 阶段执行中...");
@@ -460,32 +576,161 @@ public partial class ShellWindow : Window
                 ShowActions(true);
             }
         }
-        catch (OperationCanceledException) { HideThinking(); Chat("系统", "流水线已取消"); }
-        catch (Exception ex) { HideThinking(); Chat("错误", ex.Message); }
-    }
-
-    private TaskCompletionSource<int>? _confirmTcs;
-    private async Task WaitConfirmOrRetryAsync(int stage, CancellationToken ct)
-    {
-        _activeStage = stage;
-        while (!ct.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
-            _confirmTcs = new TaskCompletionSource<int>();
-            var result = await _confirmTcs.Task;
-            if (result == 1) return;
-            if (result == 2)
-            {
-                ShowThinking("重新生成中...");
-                await Task.Delay(1000, ct);
-                HideThinking();
-                Chat("AI", "已重新生成。");
-            }
+            HideThinking();
+            Chat("系统", "流水线已停止");
+        }
+        catch (Exception ex)
+        {
+            HideThinking();
+            Chat("错误", ex.Message);
+        }
+        finally
+        {
+            _isRunning = false;
+            StopBtn.Visibility = Visibility.Collapsed;
+            HidePreview();
+            UpdateStartButtonVisibility();
         }
     }
 
-    private void StageConfirm_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(1); ShowActions(false); }
-    private void StageRewrite_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(2); }
+    /// <summary>
+    /// 通用 Stage 执行器：循环"生成 → 等待用户 ✓ 确认/↻ 重写"。
+    /// 确认后调 onConfirmed 持久化；重写则继续循环。
+    /// </summary>
+    private async Task RunStageWithRewriteAsync(
+        int stageIndex,
+        string generatingText,
+        string previewTitle,
+        Func<Task<(bool Success, string? Error, string ResultText)>> onGeneratingAsync,
+        Func<string, Task> onConfirmed,
+        CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            GuardStep();
+            SetStage(stageIndex, true);
+            ShowActions(false);
+            ShowThinking(generatingText);
+            ShowPreview(previewTitle, "AI 正在构思中...");
+
+            var (ok, error, resultText) = await onGeneratingAsync();
+            HideThinking();
+
+            if (!ok)
+            {
+                SetStage(stageIndex, false);
+                ShowPreview($"{_stages[stageIndex].Name}（生成失败）", error ?? "未知错误");
+                Chat("错误", $"{_stages[stageIndex].Name}生成失败: {error}");
+                return;
+            }
+
+            ShowPreview(previewTitle, resultText);
+            SetStage(stageIndex, false);
+            ShowActions(true);
+            Chat("AI", $"{_stages[stageIndex].Name}已生成。请在预览区查看。");
+
+            var decision = await WaitUserDecisionAsync(ct);
+            if (decision == 2)
+            {
+                // 重写：循环顶端重新生成
+                continue;
+            }
+
+            // 确认：调 onConfirmed 持久化
+            await onConfirmed(resultText);
+            HidePreview();
+            ShowActions(false);
+            return;
+        }
+    }
+
+    /// <summary>
+    /// 等待用户在 ✓ 确认 / ↻ 重写 之间二选一。
+    /// </summary>
+    private async Task<int> WaitUserDecisionAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            _confirmTcs = new TaskCompletionSource<int>();
+            var decision = await _confirmTcs.Task;
+            if (decision == 1 || decision == 2) return decision;
+        }
+        return 1; // 取消视为"确认"
+    }
+
+    private static NovelWriter.Engine.Pipeline.SynopsisResult ParseSynopsisFromFile(string text)
+    {
+        // 简单解析：提取 # 标题、**核心冲突:** 和 **主角:** 字段
+        var title = "";
+        var coreConflict = "";
+        var mainChar = "";
+
+        foreach (var line in text.Split('\n'))
+        {
+            var t = line.Trim();
+            if (t.StartsWith("# ") && string.IsNullOrEmpty(title))
+                title = t[2..].Trim();
+            else if (t.StartsWith("**核心冲突:**") || t.StartsWith("**核心冲突："))
+                coreConflict = t.Substring(t.IndexOf(':') + 1).Replace("：", ":").Trim();
+            else if (t.StartsWith("**主角:**") || t.StartsWith("**主角："))
+                mainChar = t.Substring(t.IndexOf(':') + 1).Replace("：", ":").Trim();
+        }
+
+        return new NovelWriter.Engine.Pipeline.SynopsisResult
+        {
+            Title = title,
+            CoreConflict = coreConflict,
+            MainCharacterName = mainChar,
+            Synopsis = text
+        };
+    }
+
+    private static string BuildOutlinePreview(NovelWriter.Engine.Pipeline.OutlineResult outline)
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# 分章大纲");
+        sb.AppendLine();
+        foreach (var o in outline.Outlines)
+        {
+            sb.AppendLine($"## 第{o.ChapterNumber}章 {o.SceneDescription}");
+            sb.AppendLine(o.KeyEvents ?? "");
+            sb.AppendLine();
+        }
+        return sb.ToString();
+    }
+
+    private void StageConfirm_Click(object sender, RoutedEventArgs e)
+    {
+        _confirmTcs?.TrySetResult(1);
+        ShowActions(false);
+    }
+
+    private void StageRewrite_Click(object sender, RoutedEventArgs e)
+    {
+        _confirmTcs?.TrySetResult(2);
+        ShowActions(false);
+    }
+
     private void StageRetry_Click(object sender, RoutedEventArgs e) { _confirmTcs?.TrySetResult(2); }
+
+    private void StopAi_Click(object sender, RoutedEventArgs e)
+    {
+        if (_isRunning)
+        {
+            Chat("系统", "正在停止...");
+            _aiCts?.Cancel();
+        }
+    }
+
+    private void UpdateStartButtonVisibility()
+    {
+        if (_isRunning) return;
+        if (!NovelWriterApp.LlmConfig.HasKey) return;
+        if (string.IsNullOrEmpty(_projectDir)) return;
+        StartAiBtn.Visibility = Visibility.Visible;
+    }
 
     private void SetStage(int index, bool active)
     {
@@ -552,8 +797,7 @@ public partial class ShellWindow : Window
 
     private async Task AutoReplyAsync(string userMsg, CancellationToken ct = default)
     {
-        var key = _currentApiKey;
-        if (string.IsNullOrEmpty(key))
+        if (!NovelWriterApp.LlmConfig.HasKey)
         {
             Chat("错误", "请先在左下角 ▼ 配置 LLM API Key");
             return;
@@ -562,8 +806,8 @@ public partial class ShellWindow : Window
         try
         {
             ShowThinking("AI 思考中...");
-            var adapter = new NovelWriter.Engine.Llm.GenericOpenAiAdapter(
-                _sharedHttp, key, _currentModel ?? "", _currentUri);
+            // 直接使用 DI 单例，自动应用最新配置
+            var adapter = NovelWriterApp.Services.GetRequiredService<ILlmAdapter>();
             var resp = await adapter.ChatAsync("你是NovelWriter助手", userMsg, ct);
             HideThinking();
             Chat("AI", resp);
@@ -587,6 +831,12 @@ public partial class ShellWindow : Window
         // 持久化到 app 目录下的配置文件
         var cfg = new LlmConfigDto { ApiKey = _currentApiKey, Model = _currentModel, Uri = _currentUri };
         File.WriteAllText(LlmConfigPath, JsonSerializer.Serialize(cfg));
+
+        // 同步到全局运行时配置 —— 让所有已构造的 ILlmAdapter 立即生效
+        NovelWriterApp.LlmConfig.Update(
+            apiKey: _currentApiKey,
+            model: _currentModel,
+            endpoint: _currentUri);
 
         LlmNameText.Text = string.IsNullOrEmpty(_currentModel) ? "未配置 LLM" : _currentModel;
         LlmPopup.IsOpen = false;
@@ -712,6 +962,20 @@ public partial class ShellWindow : Window
         ThinkingBar.Visibility = Visibility.Collapsed;
     }
 
+    // === 待确认预览面板 ===
+    private void ShowPreview(string title, string body)
+    {
+        PreviewTitle.Text = title;
+        PreviewBody.Text = body;
+        PreviewPanel.Visibility = Visibility.Visible;
+    }
+
+    private void HidePreview()
+    {
+        PreviewPanel.Visibility = Visibility.Collapsed;
+        PreviewBody.Text = "";
+    }
+
     private static string PhaseLabel(ProjectPhase phase) => phase switch
     {
         ProjectPhase.TopicPicked => "已创建，等待开始",
@@ -721,9 +985,9 @@ public partial class ShellWindow : Window
         _ => "等待开始"
     };
 
-    private static void GuardStep(ref int count)
+    private void GuardStep()
     {
-        if (++count > MaxPipelineSteps)
+        if (++_pipelineSteps > MaxPipelineSteps)
             throw new InvalidOperationException($"流水线执行步骤超过上限 ({MaxPipelineSteps})，已自动停止防止 token 滥用。");
     }
 }
@@ -759,6 +1023,12 @@ public class LlmConfigDto
     public string? ApiKey { get; set; }
     public string? Model { get; set; }
     public string? Uri { get; set; }
+}
+
+public class FileItem
+{
+    public string FullPath { get; set; } = "";
+    public string DisplayName { get; set; } = "";
 }
 
 public class ProjectMeta

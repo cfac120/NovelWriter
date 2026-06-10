@@ -4,20 +4,20 @@ namespace NovelWriter.Engine.Llm;
 
 /// <summary>
 /// 通用 OpenAI 兼容适配器。支持任意兼容 OpenAI API 的端点。
+/// 构造时 ApiKey 可以为空（启动时未配置场景），每次请求从 <see cref="LlmRuntimeConfig"/> 实时读取。
 /// </summary>
 public class GenericOpenAiAdapter : LlmAdapterBase
 {
-    private readonly string _modelName;
+    private readonly string _initialModel;
 
-    public override string ModelName => _modelName;
+    public override string ModelName => string.IsNullOrEmpty(Config.Model) ? _initialModel : Config.Model;
     public override int MaxContextTokens => 128_000;
     public override int RecommendedOutputTokens => 8_192;
 
-    public GenericOpenAiAdapter(HttpClient httpClient, string apiKey,
-        string modelName, string baseUrl)
-        : base(httpClient, apiKey, baseUrl)
+    public GenericOpenAiAdapter(HttpClient httpClient, LlmRuntimeConfig config)
+        : base(httpClient, config)
     {
-        _modelName = modelName;
+        _initialModel = config.Model;
     }
 
     protected override object BuildRequest(string? systemPrompt, string userMessage, bool stream = false)
@@ -29,7 +29,7 @@ public class GenericOpenAiAdapter : LlmAdapterBase
 
         return new
         {
-            model = _modelName,
+            model = Config.Model,
             messages,
             temperature = 0.7,
             max_tokens = RecommendedOutputTokens,

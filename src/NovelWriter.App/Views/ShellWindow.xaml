@@ -7,6 +7,87 @@
         WindowStartupLocation="CenterScreen"
         Background="#1E1E2E">
 
+    <Window.Resources>
+        <!-- 自定义 Expander 样式：淡选中 + 展开竖线 -->
+        <Style x:Key="ArrowExpander" TargetType="Expander">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Expander">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="8"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 展开竖线指示器 -->
+                            <Border x:Name="ExpandLine" Grid.Column="0"
+                                    Background="Transparent" Width="1" Margin="3,0,0,0"
+                                    HorizontalAlignment="Left"
+                                    Visibility="Collapsed"/>
+
+                            <StackPanel Grid.Column="1">
+                                <ToggleButton x:Name="ToggleBtn"
+                                        IsChecked="{Binding IsExpanded, Mode=TwoWay,
+                                            RelativeSource={RelativeSource TemplatedParent}}"
+                                        Background="Transparent" BorderThickness="0"
+                                        Cursor="Hand" FocusVisualStyle="{x:Null}"
+                                        HorizontalContentAlignment="Left" HorizontalAlignment="Stretch"
+                                        Padding="0">
+                                    <ToggleButton.Resources>
+                                        <Style TargetType="ToggleButton">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ToggleButton">
+                                                        <Border x:Name="Bd" Background="Transparent"
+                                                                BorderThickness="0" Padding="0">
+                                                            <ContentPresenter HorizontalAlignment="Left"
+                                                                              VerticalAlignment="Center"
+                                                                              Margin="0,3"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="Bd" Property="Background"
+                                                                        Value="#10CDD6F4"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsChecked" Value="True">
+                                                                <Setter TargetName="Bd" Property="Background"
+                                                                        Value="#08CDD6F4"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </ToggleButton.Resources>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="ArrowText" Text="▶" FontSize="9"
+                                                   Foreground="#585B70" Width="12" TextAlignment="Center"
+                                                   VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                        <ContentPresenter
+                                            Content="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}"
+                                            VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                </ToggleButton>
+                                <ContentPresenter x:Name="ContentSite" Visibility="Collapsed"
+                                                  Margin="18,0,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsExpanded" Value="True">
+                                <Setter TargetName="ArrowText" Property="Text" Value="▼"/>
+                                <Setter TargetName="ContentSite" Property="Visibility" Value="Visible"/>
+                                <Setter TargetName="ExpandLine" Property="Background" Value="#20CDD6F4"/>
+                                <Setter TargetName="ExpandLine" Property="Visibility" Value="Visible"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -43,27 +124,133 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel>
 
-                        <!-- 小说标题 -->
+                        <!-- 小说内容 -->
                         <Expander x:Name="ContentExpander" IsExpanded="True" Margin="4,4,4,0">
                             <Expander.Header>
                                 <TextBlock x:Name="ContentHeader" Text="NovelWriter" FontSize="13"
                                            FontWeight="SemiBold" Foreground="#89B4FA"/>
                             </Expander.Header>
-                            <StackPanel Margin="8,4">
-                                <TextBlock x:Name="IdeaFile" Text="故事创意" Foreground="#6C7086" FontSize="12"
-                                           Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="idea"/>
-                                <TextBlock x:Name="SynopsisFile" Text="梗概" Foreground="#6C7086" FontSize="12"
-                                           Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="synopsis"/>
-                                <TextBlock x:Name="OutlineFile" Text="大纲" Foreground="#6C7086" FontSize="12"
-                                           Margin="0,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="outline"/>
-                                <TreeView x:Name="ChapterTree" Background="Transparent" BorderThickness="0"
-                                          Foreground="#CDD6F4" Margin="0,4,0,8"
-                                          SelectedItemChanged="ChapterTreeSelected"/>
-                                <TextBlock Text="L3 记忆" Foreground="#89B4FA" FontSize="12" Margin="0,8,0,4"/>
-                                <TextBlock x:Name="CharFile" Text="人物档案" Foreground="#6C7086" FontSize="11"
-                                           Margin="8,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="characters"/>
-                                <TextBlock x:Name="WorldFile" Text="世界观" Foreground="#6C7086" FontSize="11"
-                                           Margin="8,2" Cursor="Hand" MouseLeftButtonDown="OpenFileNode" Tag="world"/>
+                            <StackPanel Margin="8,0">
+
+                                <!-- 故事创意 -->
+                                <Expander x:Name="IdeaExpander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock x:Name="IdeaFile" Text="故事创意" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="IdeaFileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- 梗概 -->
+                                <Expander x:Name="SynopsisExpander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock x:Name="SynopsisFile" Text="梗概" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="SynopsisFileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- 大纲 -->
+                                <Expander x:Name="OutlineExpander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock x:Name="OutlineFile" Text="大纲" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="OutlineFileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- L3 记忆 -->
+                                <Expander x:Name="L3Expander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock Text="L3 记忆" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="L3FileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- L2 记忆 -->
+                                <Expander x:Name="L2Expander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock Text="L2 记忆" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="L2FileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- L1 记忆 -->
+                                <Expander x:Name="L1Expander" IsExpanded="False" Margin="0,2,0,0"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock Text="L1 记忆" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <ItemsControl x:Name="L1FileList" Margin="6,2,0,0" FontSize="11"
+                                                  Background="Transparent" Foreground="#A6ADC8"
+                                                  MouseLeftButtonUp="FileItem_Click">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DisplayName}" Padding="4,2"
+                                                           Cursor="Hand" Foreground="#A6ADC8"/>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Expander>
+
+                                <!-- 正文 -->
+                                <Expander x:Name="ChapterExpander" IsExpanded="True" Margin="0,2,0,4"
+                                          Style="{StaticResource ArrowExpander}">
+                                    <Expander.Header>
+                                        <TextBlock Text="正文" FontSize="12" Foreground="#CDD6F4"/>
+                                    </Expander.Header>
+                                    <TreeView x:Name="ChapterTree" Background="Transparent" BorderThickness="0"
+                                              Foreground="#CDD6F4" FontSize="12" Margin="14,2,0,0"
+                                              SelectedItemChanged="ChapterTreeSelected"/>
+                                </Expander>
+
                             </StackPanel>
                         </Expander>
 
@@ -176,6 +363,9 @@
                                 <Button x:Name="StartAiBtn" Content="▶ 开始" Height="26"
                                         Foreground="#1E1E2E" Background="#89B4FA" BorderThickness="0" FontSize="11"
                                         Click="StartAiBtn_Click" Visibility="Collapsed" Margin="0,0,4,0"/>
+                                <Button x:Name="StopBtn" Content="■ 停止" Height="26"
+                                        Foreground="#F38BA8" Background="#3C1A1A" BorderThickness="0" FontSize="11"
+                                        Click="StopAi_Click" Visibility="Collapsed" Margin="0,0,4,0"/>
                                 <Button x:Name="ConfirmBtn" Content="✓ 确认" Width="56" Height="24"
                                         Foreground="#1E1E2E" Background="#A6E3A1" BorderThickness="0" FontSize="10"
                                         Click="StageConfirm_Click" Visibility="Collapsed" Margin="0,0,4,0"/>
@@ -186,15 +376,38 @@
                         </Grid>
                     </Border>
 
-                    <!-- === 中部：主体区（聊天 + 思考状态） === -->
+                    <!-- === 中部：主体区（待确认预览 + 聊天 + 思考状态） === -->
                     <Grid Grid.Row="1">
                         <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                             <RowDefinition Height="Auto"/>
                         </Grid.RowDefinitions>
 
+                        <!-- 待确认预览面板：当前 Stage 的生成结果，确认后才会持久化到文件 -->
+                        <Border x:Name="PreviewPanel" Grid.Row="0" Background="#1A1A2E"
+                                BorderBrush="#45475A" BorderThickness="0,0,0,1"
+                                Visibility="Collapsed" MaxHeight="280">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <Border Background="#313244" Padding="8,4">
+                                    <TextBlock x:Name="PreviewTitle" Text="— 待确认 —"
+                                               Foreground="#FAB387" FontSize="11" FontWeight="SemiBold"/>
+                                </Border>
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                                              Padding="10,8" Background="#1A1A2E">
+                                    <TextBlock x:Name="PreviewBody" Text="" Foreground="#CDD6F4"
+                                               FontSize="12" TextWrapping="Wrap" LineHeight="20"
+                                               FontFamily="Consolas, Microsoft YaHei"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+
                         <!-- 聊天内容 -->
-                        <ScrollViewer x:Name="ChatScroll" VerticalScrollBarVisibility="Auto" Background="#11111B">
+                        <ScrollViewer x:Name="ChatScroll" Grid.Row="1" VerticalScrollBarVisibility="Auto" Background="#11111B">
                             <ItemsControl x:Name="ChatList" Margin="8">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
@@ -208,7 +421,7 @@
                         </ScrollViewer>
 
                         <!-- LLM 思考/编辑状态条 -->
-                        <Border x:Name="ThinkingBar" Grid.Row="1" Background="#1A1A2E"
+                        <Border x:Name="ThinkingBar" Grid.Row="2" Background="#1A1A2E"
                                 Padding="10,6" BorderBrush="#45475A" BorderThickness="0,1,0,0"
                                 Visibility="Collapsed">
                             <Grid>

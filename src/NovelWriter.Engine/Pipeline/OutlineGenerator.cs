@@ -17,32 +17,39 @@ public class OutlineGenerator
     public OutlineGenerator(ILlmAdapter llm) => _llm = llm;
 
     public async Task<OutlineResult> GenerateAsync(
-        ProjectId projectId, string synopsis, string coreConflict,
+        ProjectId projectId, string genre, string synopsis, string coreConflict,
         string mainCharacter, string tags,
         int totalChapters, CancellationToken ct)
     {
         Log.Information("[OutlineGen] Generating outline for {Chapters} chapters", totalChapters);
 
-        var systemPrompt = @$"你是网文大纲策划专家。为故事规划分卷分章大纲。
-共需要{totalChapters}章，分卷规则: 每5章1卷。
+        var systemPrompt = $$"""
+            你是网文大纲策划专家。**严格遵守**：
 
-每章输出JSON格式:
-{{
-  ""chapter_number"": 数字,
-  ""volume_number"": 数字(每5章递增),
-  ""title"": ""章节标题(≤15字)"",
-  ""scene_description"": ""本章场景简述(≤50字)"",
-  ""key_events"": ""2-3个关键事件"",
-  ""character_involvement"": ""涉及人物ID列表(如CHAR_001)""
-}}
+            1. **题材固定为 "{{{genre}}}"**，所有章节的世界观、事件、人物能力体系必须契合这个题材。**不得漂移到其他题材**。
+            2. **必须基于已确认的梗概和核心冲突**展开，**不要重新设定故事方向**。
+            3. 输出纯 JSON 数组，不要 markdown 包裹或解释文字。
+            4. 共 {{totalChapters}} 章，分卷规则: 每5章1卷。
 
-输出完整JSON数组。第一项必须chapter_number=1。";
+            每章JSON字段:
+            {
+              "chapter_number": 数字,
+              "volume_number": 数字(每5章递增),
+              "title": "章节标题(≤15字)",
+              "scene_description": "本章场景简述(≤50字)",
+              "key_events": "2-3个关键事件",
+              "character_involvement": "涉及人物ID列表(如CHAR_001)"
+            }
+
+            第一项必须 chapter_number=1。
+            """;
 
         var userMessage = $"""
-            梗概: {synopsis}
-            核心冲突: {coreConflict}
-            主角: {mainCharacter}
-            标签: {tags}
+            【题材】: {genre}
+            【已确认的梗概】: {synopsis}
+            【核心冲突】: {coreConflict}
+            【主角】: {mainCharacter}
+            【标签】: {tags}
             """;
 
         try
