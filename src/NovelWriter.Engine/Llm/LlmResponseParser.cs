@@ -73,6 +73,8 @@ public static class LlmResponseParser
 
     /// <summary>
     /// 从 LLM 输出中提取 JSON 内容（可能包裹在 markdown code block 中）。
+    /// 关键：必须找**配对**的最外层分隔符，不能用 IndexOf/LastIndexOf
+    /// （因为 JSON 内部可能含嵌套的 {} 或 []）。
     /// </summary>
     private static string? ExtractJson(string output)
     {
@@ -84,17 +86,35 @@ public static class LlmResponseParser
             System.Text.RegularExpressions.RegexOptions.Singleline);
         if (codeBlockMatch.Success) return codeBlockMatch.Groups[1].Value.Trim();
 
-        // 尝试匹配最外层 { ... }
-        var firstBrace = output.IndexOf('{');
-        var lastBrace = output.LastIndexOf('}');
-        if (firstBrace >= 0 && lastBrace > firstBrace)
-            return output[firstBrace..(lastBrace + 1)];
+        // 找最外层成对分隔符：从第一个非空白字符开始
+        var start = -1;
+        char open = '\0', close = '\0';
+        for (int i = 0; i < output.Length; i++)
+        {
+            var c = output[i];
+            if (c == '[') { start = i; open = '['; close = ']'; break; }
+            if (c == '{') { start = i; open = '{'; close = '}'; break; }
+        }
+        if (start < 0) return null;
 
-        // 尝试匹配 [ ... ]
-        var firstBracket = output.IndexOf('[');
-        var lastBracket = output.LastIndexOf(']');
-        if (firstBracket >= 0 && lastBracket > firstBracket)
-            return output[firstBracket..(lastBracket + 1)];
+        // 从 start 往后找**配对**的 close
+        int depth = 0;
+        bool inString = false;
+        bool escape = false;
+        for (int i = start; i < output.Length; i++)
+        {
+            var c = output[i];
+            if (escape) { escape = false; continue; }
+            if (c == '\\' && inString) { escape = true; continue; }
+            if (c == '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (c == open) depth++;
+            else if (c == close)
+            {
+                depth--;
+                if (depth == 0) return output[start..(i + 1)];
+            }
+        }
 
         return null;
     }

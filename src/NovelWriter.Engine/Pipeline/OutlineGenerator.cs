@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using NovelWriter.Core.Entities;
 using NovelWriter.Core.Interfaces;
 using NovelWriter.Core.ValueObjects;
@@ -28,20 +29,20 @@ public class OutlineGenerator
 
             1. **题材固定为 "{{{genre}}}"**，所有章节的世界观、事件、人物能力体系必须契合这个题材。**不得漂移到其他题材**。
             2. **必须基于已确认的梗概和核心冲突**展开，**不要重新设定故事方向**。
-            3. 输出纯 JSON 数组，不要 markdown 包裹或解释文字。
+            3. **输出必须是合法 JSON 数组**——第一项必须是 `{` 开头，`]` 结尾；不得有 markdown 包裹、注释或多余说明。
             4. 共 {{totalChapters}} 章，分卷规则: 每5章1卷。
 
-            每章JSON字段:
+            每章JSON字段（**所有字符串字段必须是字符串类型，绝对不要输出数组/对象/null 替代字符串**）:
             {
-              "chapter_number": 数字,
-              "volume_number": 数字(每5章递增),
-              "title": "章节标题(≤15字)",
-              "scene_description": "本章场景简述(≤50字)",
-              "key_events": "2-3个关键事件",
-              "character_involvement": "涉及人物ID列表(如CHAR_001)"
+              "chapter_number": 数字（int）,
+              "volume_number": 数字（int）,
+              "title": "字符串：章节标题(≤15字)",
+              "scene_description": "字符串：场景简述(≤50字)",
+              "key_events": "字符串：2-3个关键事件，用逗号分隔",
+              "character_involvement": "字符串：人物ID列表，用逗号分隔（如 CHAR_001,CHAR_002）"
             }
 
-            第一项必须 chapter_number=1。
+            第一项必须 chapter_number=1。最后一项 chapter_number={{totalChapters}}。
             """;
 
         var userMessage = $"""
@@ -59,17 +60,19 @@ public class OutlineGenerator
 
             if (!parsed.Success || parsed.Value == null || parsed.Value.Count == 0)
             {
-                Log.Warning("[OutlineGen] Parse failed or empty: {Errors}",
-                    string.Join("; ", parsed.Errors));
-                return OutlineResult.Fail("解析大纲失败，请重试");
+                Log.Warning("[OutlineGen] Parse failed or empty: {Errors}; raw={Raw}",
+                    string.Join("; ", parsed.Errors), response.Truncate(300));
+                return OutlineResult.Fail($"解析大纲失败（{parsed.Errors.FirstOrDefault() ?? "未知错误"}）。请重试，或检查 LLM 是否返回了合法 JSON 数组。");
             }
 
             var outlines = parsed.Value.Select(d => new Outline
             {
                 ProjectId = projectId,
                 ChapterNumber = d.chapter_number,
-                VolumeNumber = d.volume_number,
-                SceneDescription = d.title ?? d.scene_description ?? $"第{d.chapter_number}章",
+                VolumeNumber = d.volume_number <= 0 ? 1 : d.volume_number,
+                SceneDescription = !string.IsNullOrWhiteSpace(d.title)
+                    ? d.title
+                    : (!string.IsNullOrWhiteSpace(d.scene_description) ? d.scene_description : $"第{d.chapter_number}章"),
                 KeyEvents = d.key_events ?? "",
                 CharacterInvolvement = d.character_involvement ?? "CHAR_001"
             }).ToList();
@@ -84,8 +87,36 @@ public class OutlineGenerator
         }
     }
 
-    private record OutlineDto(int chapter_number, int volume_number, string? title,
-        string? scene_description, string? key_events, string? character_involvement);
+    /// <summary>
+    /// DTO 用宽松接收：所有非必需字符串字段都用 <see cref="JsonElement"/> 接收，
+    /// 然后在映射时安全 ToString() —— 容错 LLM 输出 null / 数字 / 数组等。
+    /// </summary>
+    private class OutlineDto
+    {
+        [JsonPropertyName("chapter_number")]
+        [JsonConverter(typeof(LooseIntConverter))]
+        public int chapter_number { get; set; } = 0;
+
+        [JsonPropertyName("volume_number")]
+        [JsonConverter(typeof(LooseIntConverter))]
+        public int volume_number { get; set; } = 0;
+
+        [JsonPropertyName("title")]
+        [JsonConverter(typeof(LooseStringConverter))]
+        public string? title { get; set; }
+
+        [JsonPropertyName("scene_description")]
+        [JsonConverter(typeof(LooseStringConverter))]
+        public string? scene_description { get; set; }
+
+        [JsonPropertyName("key_events")]
+        [JsonConverter(typeof(LooseStringConverter))]
+        public string? key_events { get; set; }
+
+        [JsonPropertyName("character_involvement")]
+        [JsonConverter(typeof(LooseStringConverter))]
+        public string? character_involvement { get; set; }
+    }
 }
 
 public class OutlineResult

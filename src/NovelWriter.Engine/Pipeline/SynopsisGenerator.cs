@@ -87,9 +87,33 @@ public class SynopsisGenerator
         }
     }
 
-    private record SynopsisDto(string? title, string? synopsis,
-        MainCharDto? main_character, string? core_conflict);
-    private record MainCharDto(string? name, List<string>? traits);
+    private class SynopsisDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("title")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(NovelWriter.Engine.Llm.LooseStringConverter))]
+        public string? title { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("synopsis")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(NovelWriter.Engine.Llm.LooseStringConverter))]
+        public string? synopsis { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("main_character")]
+        public MainCharDto? main_character { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("core_conflict")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(NovelWriter.Engine.Llm.LooseStringConverter))]
+        public string? core_conflict { get; set; }
+    }
+
+    private class MainCharDto
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("name")]
+        [System.Text.Json.Serialization.JsonConverter(typeof(NovelWriter.Engine.Llm.LooseStringConverter))]
+        public string? name { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("traits")]
+        public List<string>? traits { get; set; }
+    }
 }
 
 public class SynopsisResult
